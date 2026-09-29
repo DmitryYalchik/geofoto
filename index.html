@@ -137,6 +137,18 @@
   .sub.ocr .ocr-pick { margin: 8px 8px 0 0; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
     color: var(--text); font: 600 16px/1 Menlo, "Courier New", monospace; }
   .sub.ocr .ocr-pick.on { border-color: var(--accent); color: var(--accent); }
+  .vlist { display: flex; flex-direction: column; gap: 8px; }
+  .vrow { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 6px 6px 6px 12px; }
+  .vrow .vmain { flex: 1; min-width: 0; border: 0; background: none; text-align: left; padding: 8px 0; display: flex; gap: 10px; align-items: center; }
+  .vrow .vmain b { font-weight: 500; }
+  .vrow .vmain small { display: block; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vrow .varr { width: 36px; height: 36px; border: 1px solid var(--line); border-radius: 10px; background: none; color: var(--text); flex: none; }
+  .vrow .varr:disabled { opacity: .25; }
+  .flabel { display: block; color: var(--muted); font-size: 14px; margin: 14px 0 6px; }
+  .flabel small { font-size: 12px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags button { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font-size: 13px; color: var(--accent); }
+  .tpl-prev { white-space: pre-wrap; background: var(--card); border: 1px dashed var(--line); border-radius: 12px; padding: 12px; font-size: 14px; color: var(--muted); }
   .done-ok { color: var(--ok); text-align: center; font-size: 14px; min-height: 20px; margin: 8px 0 0; }
   .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   label.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
@@ -255,6 +267,8 @@
     <label class="switch">Точность и высота в подписи <input type="checkbox" id="optExtra"></label>
     <label class="switch">Почтовый адрес с индексом и районом <input type="checkbox" id="optFull"></label>
     <div class="setting ver"><span>Версия</span><span class="val" id="verText"></span></div>
+    <button class="btn ghost" id="toViol" style="margin-top:14px">✏️ Кнопки нарушений</button>
+    <button class="btn ghost" id="toTpl">📝 Шаблон текста жалобы</button>
     <button class="btn ghost" id="checkUpd" style="margin-top:14px">⟳ Проверить обновления</button>
     <p class="sub" id="updNote" style="margin-top:8px;text-align:center"></p>
   </div>
@@ -292,6 +306,44 @@
     <button class="back" id="viewerDelete" style="color:var(--danger);text-align:right">Удалить</button></div>
   <img id="viewerImg" alt="Снимок с подписью">
   <div class="vstrip" id="viewerStrip"></div>
+</section>
+
+<!-- ============ Violation buttons editor ============ -->
+<section class="screen" id="violEdit" hidden>
+  <div class="bar"><button class="back" id="violClose">‹ Назад</button><span class="title">Кнопки нарушений</span><span class="step"></span></div>
+  <p class="sub">Нажмите на кнопку, чтобы изменить её название и текст для жалобы. Стрелками меняется порядок.</p>
+  <div class="scroll"><div class="vlist" id="violList"></div></div>
+  <button class="btn ghost" id="violAdd" style="margin-top:10px">＋ Добавить нарушение</button>
+  <button class="link" id="violReset">Вернуть стандартные кнопки</button>
+</section>
+
+<section class="screen" id="violItem" hidden>
+  <div class="bar"><button class="back" id="viClose">‹ Назад</button><span class="title" id="viTitle">Нарушение</span>
+    <button class="back" id="viDelete" style="text-align:right;color:var(--danger)">Удалить</button></div>
+  <div class="scroll">
+    <label class="flabel">Значок</label>
+    <input class="field" id="viIco" type="text" maxlength="4" placeholder="🚗" autocomplete="off" style="width:72px;text-align:center;font-size:22px">
+    <label class="flabel">Название кнопки <small>(так нарушение подписано на снимке)</small></label>
+    <input class="field" id="viLabel" type="text" maxlength="80" placeholder="Парковка на месте для инвалидов" autocomplete="off">
+    <label class="flabel">Текст для жалобы <small>(продолжает фразу «…с государственным регистрационным знаком А123ВС 777 …»)</small></label>
+    <textarea class="field" id="viAct" rows="3" maxlength="300" placeholder="припарковано на месте для инвалидов без опознавательного знака «Инвалид»" style="resize:none"></textarea>
+    <p class="sub" id="viErr" style="color:var(--danger);margin-top:8px"></p>
+  </div>
+  <button class="btn" id="viSave">Сохранить</button>
+</section>
+
+<!-- ============ Complaint template editor ============ -->
+<section class="screen" id="tplEdit" hidden>
+  <div class="bar"><button class="back" id="tplClose">‹ Назад</button><span class="title">Шаблон жалобы</span><span class="step"></span></div>
+  <div class="scroll">
+    <p class="sub" style="margin:0 0 8px">Метки в фигурных скобках заменяются данными снимков. Нажмите на метку, чтобы вставить её в текст.</p>
+    <div class="tags" id="tplTags"></div>
+    <textarea class="field" id="tplText" rows="9" spellcheck="true" style="resize:none;margin-top:10px"></textarea>
+    <label class="flabel">Пример</label>
+    <div class="tpl-prev" id="tplPrev"></div>
+  </div>
+  <button class="btn" id="tplSave" style="margin-top:10px">Сохранить</button>
+  <button class="link" id="tplReset">Вернуть стандартный текст</button>
 </section>
 
 <!-- ============ Address edit ============ -->
@@ -744,12 +796,21 @@ async function withExif(jpegBlob, date, coords) {
 }
 
 // ---------- violations and plates ----------
-const VIOLATIONS = [
+const DEFAULT_VIOLATIONS = [
   { ico: '🚶', label: 'Парковка на тротуаре', act: 'припарковано на тротуаре' },
   { ico: '🌱', label: 'Парковка на газоне', act: 'припарковано на газоне (озеленённой территории)' },
   { ico: '⛔', label: 'Парковка под знаком «Остановка запрещена»', act: 'припарковано в зоне действия знака 3.27 «Остановка запрещена»' },
   { ico: '🦓', label: 'Парковка на пешеходном переходе', act: 'припарковано на пешеходном переходе' },
 ];
+// The user can edit, add, remove and reorder the buttons; they are kept on the phone.
+let VIOLATIONS = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem('geofoto-violations'));
+    if (Array.isArray(v) && v.every(x => x && x.label && x.act)) return v;
+  } catch {}
+  return DEFAULT_VIOLATIONS.map(v => ({ ...v }));
+})();
+function saveViolations() { try { localStorage.setItem('geofoto-violations', JSON.stringify(VIOLATIONS)); } catch {} }
 
 // Russian plates use only letters that look Latin, so Latin input is converted to Cyrillic.
 const LAT2CYR = { A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х' };
@@ -800,15 +861,16 @@ $('newCaseBtn').onclick = () => { if (confirmDiscard()) { C = newCase(false); go
 $('quickBtn').onclick = () => { if (confirmDiscard()) { C = newCase(true); go('photos'); } };
 
 // ---------- step 1: violation ----------
-for (const v of VIOLATIONS) {
-  const b = document.createElement('button');
-  b.className = 'opt';
-  b.innerHTML = `<span class="ico">${v.ico}</span><span>${esc(v.label)}</span>`;
-  b.onclick = () => { C.violation = v; C.other = ''; go('photos'); };
-  b.dataset.label = v.label;
-  $('typeList').appendChild(b);
-}
-{
+function renderTypeList() {
+  $('typeList').innerHTML = '';
+  for (const v of VIOLATIONS) {
+    const b = document.createElement('button');
+    b.className = 'opt';
+    b.innerHTML = `<span class="ico">${esc(v.ico || '•')}</span><span>${esc(v.label)}</span>`;
+    b.onclick = () => { C.violation = { ...v }; C.other = ''; go('photos'); };
+    b.dataset.label = v.label;
+    $('typeList').appendChild(b);
+  }
   const b = document.createElement('button');
   b.className = 'opt';
   b.id = 'otherOpt';
@@ -826,6 +888,7 @@ const submitOther = () => {
 $('otherNext').onclick = submitOther;
 $('otherText').onkeydown = e => { if (e.key === 'Enter') submitOther(); };
 function renderType() {
+  renderTypeList();
   for (const b of $('typeList').children) b.classList.toggle('on', !!C.violation && b.dataset.label === C.violation.label);
   $('otherOpt').classList.toggle('on', !C.violation && !!C.other);
   $('otherBox').hidden = !C.other;
@@ -1628,21 +1691,38 @@ $('homeBtn').onclick = () => {
 };
 
 // ---------- complaint text ----------
-function buildComplaint() {
-  const s = C.shots[0], d = s.when;
-  const coords = s.coords ? `${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : null;
-  const where = C.addr || (s.addr && (s.addr.full || s.addr.short));
-  const place = where
-    ? `по адресу: ${where}` + (coords ? ` (координаты ${coords})` : '')
-    : coords ? `в точке с координатами ${coords}` : 'по адресу: [укажите адрес]';
-  const car = `транспортное средство${C.car ? ' ' + C.car : ''} с государственным регистрационным знаком ${C.plate || '[госномер]'}`;
-  const what = C.violation ? `${car} ${C.violation.act}.` : `${car}: ${C.other || '[опишите нарушение]'}.`;
-  const n = C.shots.length;
-  return `${fmtDate(d)} в ${pad(d.getHours())}:${pad(d.getMinutes())} ${place} ${what}\n\n` +
-    'Прошу провести проверку по данному факту и привлечь водителя (собственника) транспортного средства ' +
-    'к административной ответственности.\n\n' +
-    `Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются (${n} ${plural(n, 'снимок', 'снимка', 'снимков')}).`;
+const DEFAULT_TEMPLATE =
+  '{дата} в {время} {место} транспортное средство {марка} с государственным регистрационным знаком {номер} {нарушение}.\n\n' +
+  'Прошу провести проверку по данному факту и привлечь водителя (собственника) транспортного средства ' +
+  'к административной ответственности.\n\n' +
+  'Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются ({снимков}).';
+const TEMPLATE_TAGS = ['дата', 'время', 'место', 'адрес', 'координаты', 'марка', 'номер', 'нарушение', 'снимков'];
+let TEMPLATE = (() => { try { return localStorage.getItem('geofoto-template') || DEFAULT_TEMPLATE; } catch { return DEFAULT_TEMPLATE; } })();
+
+// Fills {меток} in the template; an empty value (no make, for example) leaves no double spaces behind.
+function fillTemplate(tpl, v) {
+  return tpl.replace(/\{([^{}]+)\}/g, (m, k) => (k in v ? v[k] : m))
+    .split('\n').map(line => line.replace(/ {2,}/g, ' ').replace(/ +([.,;:)])/g, '$1').replace(/\( +/g, '(')).join('\n');
 }
+function complaintValues(c) {
+  const s = c.shots[0], d = s.when, n = c.shots.length;
+  const coords = s.coords ? `${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : '';
+  const where = c.addr || (s.addr && (s.addr.full || s.addr.short)) || '';
+  return {
+    'дата': fmtDate(d),
+    'время': `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    'место': where ? `по адресу: ${where}` + (coords ? ` (координаты ${coords})` : '')
+      : coords ? `в точке с координатами ${coords}` : 'по адресу: [укажите адрес]',
+    'адрес': where || '[укажите адрес]',
+    'координаты': coords,
+    'марка': c.car || '',
+    'номер': c.plate || '[госномер]',
+    'нарушение': c.violation ? c.violation.act : (c.other || '[опишите нарушение]'),
+    'снимков': `${n} ${plural(n, 'снимок', 'снимка', 'снимков')}`,
+  };
+}
+const buildComplaint = () => fillTemplate(TEMPLATE, complaintValues(C));
+
 // Your edits to the text are kept while the case data they were made on stays the same.
 const complaintText = () => {
   const base = buildComplaint();
@@ -1669,6 +1749,92 @@ $('complaintCopy').onclick = async () => {
   $('complaintText').blur();
   $('complaintCopy').textContent = 'Скопировано ✓';
 };
+
+// ---------- editor: violation buttons ----------
+let violEditing = -1;
+function renderViolList() {
+  $('violList').innerHTML = '';
+  VIOLATIONS.forEach((v, i) => {
+    const row = document.createElement('div');
+    row.className = 'vrow';
+    row.innerHTML = `<button class="vmain"><span class="ico">${esc(v.ico || '•')}</span><span style="min-width:0"><b>${esc(v.label)}</b>` +
+      `<small>${esc(v.act)}</small></span></button><button class="varr" aria-label="Выше">↑</button><button class="varr" aria-label="Ниже">↓</button>`;
+    const [main, up, down] = row.querySelectorAll('button');
+    main.onclick = () => openViolItem(i);
+    up.disabled = i === 0;
+    down.disabled = i === VIOLATIONS.length - 1;
+    const move = d => { const [x] = VIOLATIONS.splice(i, 1); VIOLATIONS.splice(i + d, 0, x); saveViolations(); renderViolList(); };
+    up.onclick = () => move(-1);
+    down.onclick = () => move(1);
+    $('violList').appendChild(row);
+  });
+}
+function openViolItem(i) {
+  violEditing = i;
+  const v = VIOLATIONS[i] || { ico: '', label: '', act: '' };
+  $('viTitle').textContent = i < 0 ? 'Новое нарушение' : 'Нарушение';
+  $('viDelete').style.visibility = i < 0 ? 'hidden' : 'visible';
+  $('viIco').value = v.ico || '';
+  $('viLabel').value = v.label;
+  $('viAct').value = v.act;
+  $('viErr').textContent = '';
+  $('violItem').hidden = false;
+}
+const closeViolItem = () => { document.activeElement.blur(); $('violItem').hidden = true; renderViolList(); };
+$('toViol').onclick = () => { renderViolList(); $('violEdit').hidden = false; };
+$('violClose').onclick = () => { $('violEdit').hidden = true; };
+$('violAdd').onclick = () => openViolItem(-1);
+$('violReset').onclick = () => {
+  if (!confirm('Вернуть стандартные кнопки? Ваши изменения и добавленные кнопки пропадут.')) return;
+  VIOLATIONS = DEFAULT_VIOLATIONS.map(v => ({ ...v }));
+  saveViolations();
+  renderViolList();
+};
+$('viClose').onclick = closeViolItem;
+$('viSave').onclick = () => {
+  const v = { ico: $('viIco').value.trim(), label: $('viLabel').value.trim().replace(/\s+/g, ' '),
+    act: $('viAct').value.trim().replace(/\s+/g, ' ').replace(/\.$/, '') };
+  if (!v.label || !v.act) { $('viErr').textContent = 'Заполните название кнопки и текст для жалобы.'; return; }
+  if (violEditing < 0) VIOLATIONS.push(v); else VIOLATIONS[violEditing] = v;
+  saveViolations();
+  closeViolItem();
+};
+$('viDelete').onclick = () => {
+  if (!confirm(`Удалить кнопку «${VIOLATIONS[violEditing].label}»?`)) return;
+  VIOLATIONS.splice(violEditing, 1);
+  saveViolations();
+  closeViolItem();
+};
+
+// ---------- editor: complaint template ----------
+const SAMPLE = { violation: DEFAULT_VIOLATIONS[0], plate: 'А123ВС 777', car: 'Kia Rio', addr: '',
+  shots: [{ when: new Date(), coords: { latitude: 56.8389, longitude: 60.6057 }, addr: { full: '620014, г. Екатеринбург, улица Ленина, д. 1' } }, {}] };
+const renderTplPreview = () => { $('tplPrev').textContent = fillTemplate($('tplText').value, complaintValues(SAMPLE)); };
+for (const k of TEMPLATE_TAGS) {
+  const b = document.createElement('button');
+  b.textContent = `{${k}}`;
+  b.addEventListener('pointerdown', e => e.preventDefault()); // keep the cursor in the text
+  b.onclick = () => {
+    const t = $('tplText'), a = t.selectionStart ?? t.value.length, z = t.selectionEnd ?? a, ins = `{${k}}`;
+    t.value = t.value.slice(0, a) + ins + t.value.slice(z);
+    t.setSelectionRange(a + ins.length, a + ins.length);
+    renderTplPreview();
+  };
+  $('tplTags').appendChild(b);
+}
+$('tplText').addEventListener('input', renderTplPreview);
+$('toTpl').onclick = () => { $('tplText').value = TEMPLATE; renderTplPreview(); $('tplEdit').hidden = false; };
+const closeTpl = () => { $('tplText').blur(); $('tplEdit').hidden = true; };
+$('tplClose').onclick = closeTpl;
+$('tplSave').onclick = () => {
+  TEMPLATE = $('tplText').value.trim() || DEFAULT_TEMPLATE;
+  try {
+    if (TEMPLATE === DEFAULT_TEMPLATE) localStorage.removeItem('geofoto-template');
+    else localStorage.setItem('geofoto-template', TEMPLATE);
+  } catch {}
+  closeTpl();
+};
+$('tplReset').onclick = () => { $('tplText').value = DEFAULT_TEMPLATE; renderTplPreview(); };
 
 // ---------- submit via Gosuslugi "Решаем вместе" ----------
 // There is no way to prefill that form from outside, so the text goes via the clipboard.
