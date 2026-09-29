@@ -117,10 +117,21 @@
   .cam-flash.on { opacity: .8; transition: none; }
   .cam-err { position: absolute; left: 20px; right: 20px; top: 40%; color: #fff; text-align: center; }
   .crop-area { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-  .crop-wrap { position: relative; touch-action: none; line-height: 0; }
+  .crop-wrap { position: relative; touch-action: none; line-height: 0; overflow: hidden; } /* keeps the dimming inside the photo */
   #cropImg { display: block; max-width: 100%; }
   #cropRect { position: absolute; border: 3px solid #ffd84d; box-shadow: 0 0 0 9999px rgba(0,0,0,.45); pointer-events: none; }
-  #insetPrev { display: block; max-width: 100%; max-height: 90px; margin: 10px auto 0; border-radius: 6px; border: 2px solid #fff; }
+  .crop-prev { height: 84px; flex: none; display: flex; align-items: center; justify-content: center; background: #000;
+    border-radius: 12px; border: 1px solid var(--line); overflow: hidden; position: relative; }
+  #cropPrev { max-width: 100%; max-height: 100%; }
+  #cropPrevHint { position: absolute; color: var(--muted); font-size: 14px; }
+  #loupe { position: fixed; width: 130px; height: 130px; border-radius: 50%; border: 3px solid #fff; pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,.6); z-index: 60; background: #000; }
+  .vstrip img.has { border-color: var(--ok); opacity: .8; }
+  .vstrip img.on { opacity: 1; border-color: var(--accent); }
+  .inset-strip { display: flex; gap: 8px; overflow-x: auto; margin-top: 10px; }
+  .inset-strip button { flex: none; padding: 0; border: 2px solid var(--line); border-radius: 8px; background: #000; position: relative; }
+  .inset-strip img { display: block; height: 44px; border-radius: 6px; }
+  .inset-strip span { position: absolute; left: 3px; top: 2px; font-size: 11px; color: #fff; background: rgba(0,0,0,.6); padding: 0 4px; border-radius: 4px; }
   .sub.ocr { margin: 8px 0 0; min-height: 0; }
   .sub.ocr button { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 0 0 0 6px; }
   .sub.ocr .ocr-pick { margin: 8px 8px 0 0; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
@@ -203,7 +214,8 @@
     <button class="btn ghost" id="cropBtn" style="margin-top:12px">🔍 Выделить номер на снимке</button>
     <p class="sub ocr" id="ocrNote"></p>
     <div id="insetBox" hidden>
-      <img id="insetPrev" alt="Выделенный номер">
+      <div class="inset-strip" id="insetStrip"></div>
+      <p class="sub" id="insetInfo" style="margin:6px 0 0"></p>
       <label class="switch">Крупный номер в подписи снимков <input type="checkbox" id="optInset"></label>
     </div>
     <p class="sub" style="margin-top:8px">Нажмите на снимок, чтобы рассмотреть номер и марку.</p>
@@ -264,11 +276,14 @@
 
 <!-- ============ Plate selection ============ -->
 <section class="screen" id="crop" hidden>
-  <div class="bar"><button class="back" id="cropClose">‹ Назад</button><span class="title">Выделите номер</span><span class="step"></span></div>
-  <p class="sub">Обведите номер пальцем: проведите от одного угла номера к противоположному.</p>
+  <div class="bar"><button class="back" id="cropClose">‹ Назад</button><span class="title" id="cropTitle">Номер на снимке</span>
+    <button class="back" id="cropClear" style="text-align:right;color:var(--danger)">Убрать</button></div>
+  <div class="crop-prev"><canvas id="cropPrev" width="600" height="150"></canvas><span id="cropPrevHint">Здесь будет увеличенный номер</span></div>
+  <p class="sub" id="cropHint" style="margin:8px 0">Обведите номер: проведите пальцем от угла к углу. Рамку можно поправить, потянув за угол.</p>
   <div class="crop-area" id="cropArea"><div class="crop-wrap" id="cropWrap"><img id="cropImg" alt=""><div id="cropRect" hidden></div></div></div>
   <div class="vstrip" id="cropStrip"></div>
-  <button class="btn" id="cropDone" disabled>Готово</button>
+  <button class="btn" id="cropDone" style="margin-top:10px">Готово</button>
+  <canvas id="loupe" width="260" height="260" hidden></canvas>
 </section>
 
 <!-- ============ Photo viewer ============ -->
@@ -944,7 +959,7 @@ $('shutter').onclick = async () => {
 async function renderShot(s, i, n) {
   await s.ready;
   const shotAddr = C.addr || (s.addr ? (S.full ? s.addr.full : s.addr.short) : null);
-  const inset = C.crop && C.inset ? C.crop : null;
+  const inset = s.crop && C.inset !== false ? s.crop : null;
   const key = [i, n, C.plate, C.car, C.addr, violationText(), S.dms, S.extra, S.full, inset && inset.id].join('|');
   if (s.rendered && s.rendered.key === key) return s.rendered;
   const img = await loadImage(s.file);
@@ -1197,82 +1212,164 @@ $('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('pl
 $('plate').addEventListener('input', () => { C.plate = $('plate').value; if (ocr.filled && $('plate').value !== ocr.filled) ocr.filled = null; });
 $('car').addEventListener('input', () => { C.car = $('car').value; });
 
-// ---------- plate selection (enlarged inset) ----------
+// ---------- plate on each photo: selection, enlarged inset ----------
+// Every photo keeps its own plate frame (s.crop), set by hand or found by recognition.
 let cropShot = 0, cropSel = null;
-function openCrop() {
-  cropShot = C.crop ? Math.max(0, C.shots.indexOf(C.crop.shot)) : C.shots.length - 1;
-  $('crop').hidden = false;
-  showCropShot(cropShot, C.crop && C.crop.shot === C.shots[cropShot] ? C.crop.rect : null);
-}
-function showCropShot(i, rect) {
-  cropShot = i;
-  cropSel = rect;
-  const img = $('cropImg');
-  img.style.maxHeight = $('cropArea').clientHeight + 'px';
-  img.src = C.shots[i].thumb;
-  img.onload = drawCropRect;
-  $('cropStrip').innerHTML = '';
-  $('cropStrip').hidden = C.shots.length < 2;
-  C.shots.forEach((s, k) => {
-    const t = document.createElement('img');
-    t.src = s.thumb;
-    t.className = k === i ? 'on' : '';
-    t.onclick = () => showCropShot(k, null);
-    $('cropStrip').appendChild(t);
-  });
-  drawCropRect();
-}
-function drawCropRect() {
-  const r = $('cropRect');
-  r.hidden = !cropSel;
-  $('cropDone').disabled = !cropSel || cropSel.w < 0.01 || cropSel.h < 0.005;
-  if (!cropSel) return;
-  Object.assign(r.style, { left: cropSel.x * 100 + '%', top: cropSel.y * 100 + '%', width: cropSel.w * 100 + '%', height: cropSel.h * 100 + '%' });
-}
-{
-  let start = null;
-  const pt = e => {
-    const b = $('cropImg').getBoundingClientRect();
-    return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) };
-  };
-  const wrap = $('cropWrap');
-  wrap.addEventListener('pointerdown', e => { start = pt(e); wrap.setPointerCapture(e.pointerId); });
-  wrap.addEventListener('pointermove', e => {
-    if (!start) return;
-    const p = pt(e);
-    cropSel = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
-    drawCropRect();
-  });
-  wrap.addEventListener('pointerup', () => { start = null; });
-  wrap.addEventListener('pointercancel', () => { start = null; });
-}
-$('cropClose').onclick = () => { $('crop').hidden = true; };
-$('cropDone').onclick = async () => {
-  const s = C.shots[cropShot], img = await loadImage(s.file);
+
+async function makeCrop(s, rect, auto) {
+  const img = await loadImage(s.file);
   const W = img.naturalWidth, H = img.naturalHeight;
-  const sx = Math.round(cropSel.x * W), sy = Math.round(cropSel.y * H);
-  const sw = Math.max(1, Math.round(cropSel.w * W)), sh = Math.max(1, Math.round(cropSel.h * H));
+  const sx = Math.round(rect.x * W), sy = Math.round(rect.y * H);
+  const sw = Math.max(1, Math.round(rect.w * W)), sh = Math.max(1, Math.round(rect.h * H));
   const canvas = document.createElement('canvas');
   const scale = Math.min(4, 900 / sw); // enough pixels for a sharp inset and for recognition
   canvas.width = Math.round(sw * scale); canvas.height = Math.round(sh * scale);
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-  C.crop = { id: Date.now(), shot: s, rect: cropSel, canvas };
+  s.crop = { id: `${Date.now()}-${Math.random()}`, rect, canvas, auto: !!auto };
   if (C.inset == null) C.inset = true;
   C.saved = false;
-  $('crop').hidden = true;
-  renderInset();
-  recognizePlate([canvas], 'crop');
+  return s.crop;
+}
+
+function openCrop(i) {
+  $('crop').hidden = false;
+  const first = C.shots.findIndex(s => !s.crop);
+  showCropShot(i != null ? i : first >= 0 ? first : 0);
+}
+function showCropShot(i) {
+  cropShot = i;
+  const s = C.shots[i];
+  cropSel = s.crop ? { ...s.crop.rect } : null;
+  const img = $('cropImg');
+  img.style.maxHeight = $('cropArea').clientHeight + 'px';
+  img.onload = () => { drawCropRect(); drawCropPreview(); };
+  img.src = s.thumb;
+  $('cropTitle').textContent = C.shots.length > 1 ? `Снимок ${i + 1} из ${C.shots.length}` : 'Номер на снимке';
+  renderCropStrip();
+  drawCropRect();
+  drawCropPreview();
+}
+function renderCropStrip() {
+  $('cropStrip').innerHTML = '';
+  $('cropStrip').hidden = C.shots.length < 2;
+  C.shots.forEach((s, k) => {
+    const t = document.createElement('img');
+    t.src = s.thumb;
+    t.className = [k === cropShot ? 'on' : '', s.crop ? 'has' : ''].join(' ');
+    t.onclick = () => showCropShot(k);
+    $('cropStrip').appendChild(t);
+  });
+}
+function drawCropRect() {
+  const r = $('cropRect');
+  r.hidden = !cropSel;
+  $('cropClear').style.visibility = cropSel ? 'visible' : 'hidden';
+  if (!cropSel) return;
+  Object.assign(r.style, { left: cropSel.x * 100 + '%', top: cropSel.y * 100 + '%', width: cropSel.w * 100 + '%', height: cropSel.h * 100 + '%' });
+}
+// Enlarged view of what is selected, straight from the full-size photo.
+function drawCropPreview() {
+  const cv = $('cropPrev'), img = $('cropImg'), ctx = cv.getContext('2d');
+  $('cropPrevHint').hidden = !!cropSel;
+  if (!cropSel || !img.naturalWidth) { ctx.clearRect(0, 0, cv.width, cv.height); cv.style.visibility = 'hidden'; return; }
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const sw = Math.max(1, cropSel.w * W), sh = Math.max(1, cropSel.h * H);
+  cv.width = 600; cv.height = Math.max(20, Math.min(300, Math.round(600 * sh / sw)));
+  cv.style.visibility = 'visible';
+  ctx.drawImage(img, cropSel.x * W, cropSel.y * H, sw, sh, 0, 0, cv.width, cv.height);
+}
+// Magnifier above the finger, so the corner of the plate is visible while dragging.
+function drawLoupe(p, e) {
+  const lp = $('loupe'), img = $('cropImg'), ctx = lp.getContext('2d');
+  const W = img.naturalWidth, H = img.naturalHeight, zoom = 4;
+  const b = img.getBoundingClientRect();
+  const srcW = lp.width / zoom * (W / b.width) / 2, srcH = lp.height / zoom * (H / b.height) / 2; // x2: canvas is 2x css size
+  const cx = p.x * W, cy = p.y * H;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, lp.width, lp.height);
+  ctx.drawImage(img, cx - srcW / 2, cy - srcH / 2, srcW, srcH, 0, 0, lp.width, lp.height);
+  if (cropSel) { // current frame inside the loupe
+    const toX = x => (x * W - (cx - srcW / 2)) / srcW * lp.width, toY = y => (y * H - (cy - srcH / 2)) / srcH * lp.height;
+    ctx.strokeStyle = '#ffd84d'; ctx.lineWidth = 4;
+    ctx.strokeRect(toX(cropSel.x), toY(cropSel.y), toX(cropSel.x + cropSel.w) - toX(cropSel.x), toY(cropSel.y + cropSel.h) - toY(cropSel.y));
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2; // crosshair
+  ctx.beginPath(); ctx.moveTo(lp.width / 2, lp.height / 2 - 24); ctx.lineTo(lp.width / 2, lp.height / 2 + 24);
+  ctx.moveTo(lp.width / 2 - 24, lp.height / 2); ctx.lineTo(lp.width / 2 + 24, lp.height / 2); ctx.stroke();
+  lp.hidden = false;
+  const x = Math.min(window.innerWidth - 140, Math.max(10, e.clientX - 65));
+  const y = e.clientY - 170 < 10 ? e.clientY + 40 : e.clientY - 170;
+  Object.assign(lp.style, { left: x + 'px', top: y + 'px' });
+}
+{
+  let anchor = null, frame = 0;
+  const pt = e => {
+    const b = $('cropImg').getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) };
+  };
+  const wrap = $('cropWrap');
+  wrap.addEventListener('pointerdown', e => {
+    const p = pt(e), b = $('cropImg').getBoundingClientRect();
+    anchor = p;
+    if (cropSel) { // grabbing near a corner moves that corner; the opposite one stays
+      const corners = [[cropSel.x, cropSel.y], [cropSel.x + cropSel.w, cropSel.y], [cropSel.x, cropSel.y + cropSel.h], [cropSel.x + cropSel.w, cropSel.y + cropSel.h]];
+      let best = null, bd = 32;
+      corners.forEach(([x, y], k) => {
+        const d = Math.hypot((x - p.x) * b.width, (y - p.y) * b.height);
+        if (d < bd) { bd = d; best = k; }
+      });
+      if (best != null) { const o = corners[3 - best]; anchor = { x: o[0], y: o[1] }; }
+    }
+    wrap.setPointerCapture(e.pointerId);
+    drawLoupe(p, e);
+  });
+  wrap.addEventListener('pointermove', e => {
+    if (!anchor) return;
+    const p = pt(e);
+    cropSel = { x: Math.min(anchor.x, p.x), y: Math.min(anchor.y, p.y), w: Math.abs(p.x - anchor.x), h: Math.abs(p.y - anchor.y) };
+    drawCropRect();
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => { drawCropPreview(); drawLoupe(p, e); });
+  });
+  const end = async () => {
+    if (!anchor) return;
+    anchor = null;
+    $('loupe').hidden = true;
+    if (!cropSel || cropSel.w < 0.01 || cropSel.h < 0.005) { cropSel = C.shots[cropShot].crop ? { ...C.shots[cropShot].crop.rect } : null; drawCropRect(); drawCropPreview(); return; }
+    const s = C.shots[cropShot], crop = await makeCrop(s, { ...cropSel }, false);
+    renderCropStrip();
+    recognizePlate([crop.canvas], 'crop');
+  };
+  wrap.addEventListener('pointerup', end);
+  wrap.addEventListener('pointercancel', end);
+}
+$('cropClear').onclick = () => {
+  C.shots[cropShot].crop = null;
+  C.saved = false;
+  cropSel = null;
+  drawCropRect(); drawCropPreview(); renderCropStrip();
 };
-$('cropBtn').onclick = openCrop;
+const closeCrop = () => { $('crop').hidden = true; $('loupe').hidden = true; renderInset(); };
+$('cropClose').onclick = closeCrop;
+$('cropDone').onclick = closeCrop;
+$('cropBtn').onclick = () => openCrop();
+
 function renderInset() {
-  const has = !!(C.crop && C.shots.includes(C.crop.shot));
-  if (!has) C.crop = null;
-  $('insetBox').hidden = !has;
-  $('cropBtn').textContent = has ? '🔍 Выделить номер заново' : '🔍 Выделить номер на снимке';
-  if (has) $('insetPrev').src = C.crop.canvas.toDataURL('image/jpeg', 0.85);
-  $('optInset').checked = has && C.inset !== false;
+  const withCrop = C.shots.map((s, i) => [s, i]).filter(([s]) => s.crop);
+  $('insetBox').hidden = !withCrop.length;
+  $('cropBtn').textContent = withCrop.length ? '🔍 Проверить или поправить номер на снимках' : '🔍 Выделить номер на снимке';
+  $('insetStrip').innerHTML = '';
+  for (const [s, i] of withCrop) {
+    const b = document.createElement('button');
+    b.innerHTML = `<img src="${s.crop.canvas.toDataURL('image/jpeg', 0.8)}" alt=""><span>${i + 1}</span>`;
+    b.onclick = () => openCrop(i);
+    $('insetStrip').appendChild(b);
+  }
+  const n = C.shots.length, k = withCrop.length, auto = withCrop.filter(([s]) => s.crop.auto).length;
+  $('insetInfo').textContent = `Номер выделен на ${k} из ${n} ${plural(n, 'снимка', 'снимков', 'снимков')}` +
+    (auto ? ` (${auto === k ? 'автоматически' : `${auto} автоматически`} — проверьте)` : '') + '. Нажмите, чтобы поправить.';
+  $('optInset').checked = C.inset !== false;
 }
 $('optInset').onchange = e => { C.inset = e.target.checked; C.saved = false; };
 
@@ -1326,27 +1423,71 @@ function ocrCanvas(src, maxW) {
   ctx.drawImage(src, 0, 0, c.width, c.height);
   return c;
 }
+// Plates on a whole photo with where they are: runs of up to 3 neighbouring words that read as a plate.
+function platesWithBoxes(data, cw, ch) {
+  const out = [];
+  for (const line of data.lines || []) {
+    const ws = line.words || [];
+    for (let i = 0; i < ws.length; i++) {
+      for (let j = i; j < Math.min(ws.length, i + 3); j++) {
+        const part = ws.slice(i, j + 1), got = parsePlates(part.map(w => w.text).join(''));
+        if (!got.length) continue;
+        const x0 = Math.min(...part.map(w => w.bbox.x0)), x1 = Math.max(...part.map(w => w.bbox.x1));
+        const y0 = Math.min(...part.map(w => w.bbox.y0)), y1 = Math.max(...part.map(w => w.bbox.y1));
+        const px = (x1 - x0) * 0.08, py = (y1 - y0) * 0.45; // the text box is tighter than the plate itself
+        const rect = { x: Math.max(0, (x0 - px) / cw), y: Math.max(0, (y0 - py) / ch) };
+        rect.w = Math.min(1 - rect.x, (x1 - x0 + 2 * px) / cw); rect.h = Math.min(1 - rect.y, (y1 - y0 + 2 * py) / ch);
+        if (!out.some(o => o.plate === got[0])) out.push({ plate: got[0], rect });
+        i = j;
+        break;
+      }
+    }
+  }
+  return out;
+}
+// Put the frame found by recognition on every photo that shows this plate, unless framed by hand.
+async function applyAutoCrops(plate) {
+  for (const s of C.shots) {
+    const d = (s.detected || []).find(x => x.plate === plate);
+    if (d && (!s.crop || s.crop.auto)) await makeCrop(s, d.rect, true);
+    else if (!d && s.crop && s.crop.auto) s.crop = null; // the auto frame belonged to another car
+  }
+  if (!$('scr-plate').hidden) renderInset();
+}
+
 async function recognizePlate(sources, mode) {
   const run = ++ocr.run, caseRef = C;
   const alive = () => run === ocr.run && C === caseRef;
   const note = t => { if (alive()) $('ocrNote').innerHTML = t; };
-  const use = p => { $('plate').value = p; C.plate = p; ocr.filled = p; };
+  const use = p => { $('plate').value = p; C.plate = p; ocr.filled = p; if (mode === 'auto') applyAutoCrops(p); };
   note(mode === 'crop' ? 'Распознаю номер…' : 'Ищу номер на снимках…');
   try {
     const w = await ocrWorker();
-    // crop: a single line; whole photo: automatic layout first, then scattered text
-    const modes = mode === 'crop' ? ['7', '6'] : ['3', '11'];
     const found = [];
-    for (const src of sources) {
-      for (const psm of modes) {
+    if (mode === 'crop') {
+      for (const psm of ['7', '6']) {
         await w.setParameters({ tessedit_pageseg_mode: psm });
-        const { data } = await w.recognize(ocrCanvas(src, mode === 'crop' ? 900 : 2200));
+        const { data } = await w.recognize(ocrCanvas(sources[0], 900));
         if (!alive()) return;
-        const got = parsePlates(data.text);
-        for (const p of got) if (!found.includes(p)) found.push(p);
-        if (got.length) break;
+        found.push(...parsePlates(data.text));
+        if (found.length) break;
       }
-      if (mode === 'crop' && found.length) break;
+    } else {
+      // whole photos: automatic layout first, then scattered text; remember where each plate is
+      for (const s of sources) {
+        const img = await loadImage(s.file), cv = ocrCanvas(img, 2200);
+        s.detected = [];
+        for (const psm of ['3', '11']) {
+          await w.setParameters({ tessedit_pageseg_mode: psm });
+          const { data } = await w.recognize(cv, {}, { blocks: true, text: true });
+          if (!alive()) return;
+          s.detected = platesWithBoxes(data, cv.width, cv.height);
+          if (!s.detected.length) s.detected = parsePlates(data.text).map(plate => ({ plate, rect: null }));
+          if (s.detected.length) break;
+        }
+        s.detected = s.detected.filter(d => d.rect).concat(s.detected.filter(d => !d.rect));
+        for (const d of s.detected) if (!found.includes(d.plate)) found.push(d.plate);
+      }
     }
     const cur = formatPlate($('plate').value);
     if (!found.length) {
@@ -1368,17 +1509,19 @@ async function recognizePlate(sources, mode) {
       } else if (cur !== p) {
         note(`Распознано: <b>${esc(p)}</b> <button id="ocrUse">подставить</button>`);
         $('ocrUse').onclick = () => { use(p); note(`Подставлено: <b>${esc(p)}</b>`); };
-      } else note('Номер совпадает с распознанным ✓');
+      } else {
+        note('Номер совпадает с распознанным ✓');
+        if (mode === 'auto') applyAutoCrops(p);
+      }
     }
   } catch (e) {
     note(`Распознавание недоступно: ${esc(e.message)}`);
   }
-}async function autoRecognize() {
-  if (C.ocrTried || C.plate) return;
+}
+async function autoRecognize() {
+  if (C.ocrTried) return;
   C.ocrTried = true;
-  const imgs = [];
-  for (const s of C.shots.slice(0, 3)) imgs.push(await loadImage(s.file));
-  recognizePlate(imgs, 'auto');
+  recognizePlate(C.shots.slice(0, 6), 'auto');
 }
 
 $('plate').onkeydown = e => { if (e.key === 'Enter') $('car').focus(); };
