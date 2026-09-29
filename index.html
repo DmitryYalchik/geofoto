@@ -80,6 +80,10 @@
     font: 700 30px/1 Menlo, "Courier New", monospace; text-align: center; letter-spacing: 1px; text-transform: uppercase; }
   .plate-input:focus { outline: none; border-color: var(--accent); }
   .plate-input::placeholder { color: #b5bcc4; font-weight: 400; }
+  .sugg { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .sugg button { padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); font-size: 15px; }
+  .sugg button b { color: var(--accent); font-weight: 600; }
+  .sugg button.recent::before { content: '↺ '; color: var(--muted); }
   .strip { display: flex; gap: 6px; overflow-x: auto; margin: 12px 0; }
   .strip img { height: 72px; border-radius: 8px; flex: none; }
 
@@ -148,11 +152,14 @@
 
 <!-- ============ Step 3: plate ============ -->
 <section class="screen" id="scr-plate" hidden>
-  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Госномер</span><span class="step">3 из 3</span></div>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Автомобиль</span><span class="step">3 из 3</span></div>
   <div class="scroll">
     <input class="plate-input" id="plate" type="text" placeholder="А123ВС 777" autocomplete="off"
-      autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="14">
-    <p class="sub" style="margin-top:8px">Латинские буквы заменятся на русские. Нажмите на снимок, чтобы рассмотреть номер.</p>
+      autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next" maxlength="14">
+    <input class="field" id="car" type="text" placeholder="Марка и модель, например Kia Rio" autocomplete="off"
+      autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="60" style="margin-top:10px">
+    <div class="sugg" id="carSugg"></div>
+    <p class="sub" style="margin-top:8px">Нажмите на снимок, чтобы рассмотреть номер и марку.</p>
     <div class="strip" id="plateStrip"></div>
   </div>
   <button class="btn" id="plateNext">Готово</button>
@@ -462,7 +469,8 @@ function stripLayout(w, info) {
   if (info.coords) add(`Координаты: ${info.coords}` + (info.extra ? `   ${info.extra}` : ''));
   if (info.heading) add(`Направление съёмки: ${info.heading}`);
   add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
-  if (info.plate) add(`Госномер: ${info.plate}`);
+  const car = [info.plate && `Госномер: ${info.plate}`, info.car && `ТС: ${info.car}`].filter(Boolean).join('   ');
+  if (car) add(car);
   if (info.violation) add(`Нарушение: ${info.violation}`);
   const lineH = Math.round(fs * 1.35);
   return { fs, padding, lineH, lines, height: lines.length * lineH + padding * 2 };
@@ -579,7 +587,7 @@ function formatPlate(v) {
 // ---------- navigation ----------
 // C is the case being recorded: one vehicle, its violation, plate and photos.
 let C = null;
-const newCase = (quick, violation) => ({ quick, violation: violation || null, plate: '', shots: [], saved: false });
+const newCase = (quick, violation) => ({ quick, violation: violation || null, plate: '', car: '', shots: [], saved: false });
 const violationText = () => C && !C.quick ? (C.violation ? C.violation.label : C.other) : '';
 
 const BACK = {
@@ -706,7 +714,7 @@ $('cam').addEventListener('change', async e => {
 // Photos are numbered "1 из N" only when rendered for saving, once N is known.
 async function renderShot(s, i, n) {
   const shotAddr = s.addr ? (S.full ? s.addr.full : s.addr.short) : null;
-  const key = [i, n, C.plate, violationText(), S.dms, S.extra, S.full].join('|');
+  const key = [i, n, C.plate, C.car, violationText(), S.dms, S.extra, S.full].join('|');
   if (s.rendered && s.rendered.key === key) return s.rendered;
   const img = await loadImage(s.file);
   let w = img.naturalWidth, h = img.naturalHeight;
@@ -722,6 +730,7 @@ async function renderShot(s, i, n) {
     heading: s.heading != null ? fmtHeading(s.heading) : null,
     address: shotAddr,
     plate: C.plate,
+    car: C.car,
     violation: violationText(),
   });
   const canvas = document.createElement('canvas');
@@ -791,9 +800,150 @@ $('viewerDelete').onclick = () => {
   });
 }
 
-// ---------- step 3: plate ----------
+// ---------- step 3: plate, make and model ----------
+// Makes common in Russia: [name, Russian spellings people type, models]
+const CARS = [
+  ['Lada', 'лада ваз', 'Vesta,Granta,Largus,Niva Legend,Niva Travel,XRAY,Iskra,Kalina,Priora,2107,2114'],
+  ['Haval', 'хавал хавейл', 'Jolion,F7,F7x,H6,Dargo,M6,H9'],
+  ['Chery', 'чери черри', 'Tiggo 4,Tiggo 4 Pro,Tiggo 7 Pro,Tiggo 7 Pro Max,Tiggo 8,Tiggo 8 Pro,Tiggo 8 Pro Max,Arrizo 8'],
+  ['Geely', 'джили', 'Coolray,Monjaro,Atlas,Atlas Pro,Tugella,Emgrand,Okavango,Preface,Cityray'],
+  ['Kia', 'киа кия', 'Rio,Ceed,Cerato,K5,Optima,Sportage,Sorento,Seltos,Soul,Carnival,Mohave,Picanto'],
+  ['Hyundai', 'хендай хендэ хёндай хундай хюндай', 'Solaris,Creta,Elantra,Sonata,Tucson,Santa Fe,i30,i40,Palisade,Getz,Accent'],
+  ['Toyota', 'тойота', 'Camry,Corolla,RAV4,Land Cruiser,Land Cruiser Prado,Highlander,C-HR,Hilux,Fortuner,Prius,Yaris,Alphard'],
+  ['Volkswagen', 'фольксваген вольксваген фольц vw', 'Polo,Jetta,Tiguan,Passat,Golf,Touareg,Teramont,Taos,Transporter,Caddy'],
+  ['Skoda', 'шкода', 'Octavia,Rapid,Kodiaq,Karoq,Superb,Fabia,Yeti'],
+  ['Renault', 'рено', 'Logan,Sandero,Duster,Kaptur,Arkana,Megane,Fluence,Koleos'],
+  ['Nissan', 'ниссан нисан', 'Qashqai,X-Trail,Almera,Terrano,Juke,Murano,Pathfinder,Note,Teana'],
+  ['Mitsubishi', 'мицубиси митсубиси мицубиши', 'Outlander,ASX,Pajero,Pajero Sport,Lancer,L200,Eclipse Cross'],
+  ['Mazda', 'мазда', '3,6,CX-5,CX-30,CX-9,CX-60'],
+  ['BMW', 'бмв бэха', '3 Series,5 Series,7 Series,X1,X3,X5,X6,X7'],
+  ['Mercedes-Benz', 'мерседес мерс', 'A-Class,C-Class,E-Class,S-Class,GLA,GLC,GLE,GLS,G-Class,Sprinter,Vito'],
+  ['Audi', 'ауди', 'A3,A4,A6,A8,Q3,Q5,Q7,Q8'],
+  ['Changan', 'чанган чанъань', 'CS35 Plus,CS55 Plus,CS75 Plus,UNI-K,UNI-V,UNI-T,Alsvin,Eado Plus'],
+  ['Exeed', 'эксид иксид', 'LX,TXL,RX,VX'],
+  ['Omoda', 'омода', 'C5,S5,C7'],
+  ['Jaecoo', 'джейку джаеку', 'J7,J8'],
+  ['Tank', 'танк', '300,400,500'],
+  ['Jetour', 'джетур', 'Dashing,X70,X90 Plus,T2'],
+  ['Tenet', 'тенет', 'T4,T7,T8'],
+  ['Belgee', 'белджи', 'X50,X70'],
+  ['Moskvich', 'москвич', '3,3e,6'],
+  ['Solaris', 'солярис', 'HS,HC,KRS,KRX'],
+  ['Kaiyi', 'кайи каи', 'E5,X3 Pro'],
+  ['Li Auto', 'ли авто лисян lixiang', 'L6,L7,L8,L9'],
+  ['Zeekr', 'зикр', '001,7X,9X,X'],
+  ['Voyah', 'воя вояж', 'Free,Dream'],
+  ['GAC', 'гак', 'GS8,GS3,M8'],
+  ['FAW', 'фав', 'Bestune T77,Bestune B70'],
+  ['Dongfeng', 'донгфенг дунфэн', 'Shine Max,580,Aeolus'],
+  ['JAC', 'джак', 'JS4,J7,T8'],
+  ['Great Wall', 'грейт волл', 'Wingle 7,Poer'],
+  ['ГАЗ', 'газ gaz газель', 'Газель,Газель Next,Соболь,Валдай'],
+  ['УАЗ', 'уаз uaz', 'Патриот,Хантер,Буханка,Профи'],
+  ['Ford', 'форд', 'Focus,Mondeo,Kuga,EcoSport,Explorer,Transit,Fiesta'],
+  ['Chevrolet', 'шевроле шевролет шеви', 'Niva,Cruze,Aveo,Lacetti,Cobalt,Captiva,Tahoe,Spark'],
+  ['Daewoo', 'дэу деу', 'Nexia,Matiz,Gentra'],
+  ['Datsun', 'датсун', 'on-DO,mi-DO'],
+  ['Lexus', 'лексус', 'RX,NX,ES,LX,GX,IS,UX'],
+  ['Honda', 'хонда', 'CR-V,Civic,Accord,Pilot,Fit'],
+  ['Subaru', 'субару', 'Forester,Outback,XV,Impreza,Legacy'],
+  ['Volvo', 'вольво', 'XC40,XC60,XC90,S60,S90'],
+  ['Land Rover', 'ленд ровер лэнд ровер рендж', 'Range Rover,Range Rover Sport,Range Rover Evoque,Discovery,Defender'],
+  ['Porsche', 'порше', 'Cayenne,Macan,Panamera,911'],
+  ['Peugeot', 'пежо', '308,408,3008,5008,Partner'],
+  ['Citroen', 'ситроен', 'C3,C4,C5 Aircross,Berlingo'],
+  ['Opel', 'опель', 'Astra,Corsa,Zafira,Insignia,Mokka'],
+  ['Suzuki', 'сузуки', 'Vitara,SX4,Jimny,Swift'],
+  ['Infiniti', 'инфинити', 'QX50,QX60,QX80,FX35'],
+  ['Jeep', 'джип', 'Grand Cherokee,Wrangler,Compass'],
+  ['Tesla', 'тесла', 'Model 3,Model Y,Model S,Model X'],
+];
+const norm = s => s.toLowerCase().replace(/ё/g, 'е').replace(/[-‐]/g, ' ').replace(/\s+/g, ' ').trim();
+// Rough phonetic key so that "тойота кам" finds Toyota Camry and "лада ве" finds Lada Vesta.
+const RU2LAT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'i', к: 'k', л: 'l', м: 'm', н: 'n',
+  о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sh', ъ: '', ы: 'i', ь: '', э: 'e', ю: 'u', я: 'a' };
+// Cyrillic "х" is "h" in names (Хавал) but "x" in models typed on a Russian keyboard (Х5), so the query tries both.
+const canon = (s, hx = 'h') => norm(s)
+  .replace(/дж/g, 'j').replace(/х/g, hx).replace(/[а-я]/g, ch => RU2LAT[ch] ?? ch)
+  .replace(/ph/g, 'f').replace(/ck/g, 'k').replace(/c(?!h)/g, 'k').replace(/q/g, 'k').replace(/w/g, 'v')
+  .replace(/y/g, 'i').replace(/([a-z])\1+/g, '$1');
+const CAR_INDEX = [];
+for (const [make, ru, models] of CARS) {
+  const makeKeys = [...new Set([make, ...ru.split(' ')].map(s => canon(s)))];
+  CAR_INDEX.push({ text: make, make: true, keys: makeKeys, modelKeys: [], order: CAR_INDEX.length });
+  for (const m of models.split(',')) {
+    const cm = canon(m);
+    CAR_INDEX.push({ text: `${make} ${m}`, keys: makeKeys.map(k => `${k} ${cm}`), modelKeys: [cm], order: CAR_INDEX.length });
+  }
+}
+const recentCars = () => { try { return JSON.parse(localStorage.getItem('geofoto-cars') || '[]'); } catch { return []; } };
+function rememberCar(v) {
+  if (!v) return;
+  const list = [v, ...recentCars().filter(x => x !== v)].slice(0, 10);
+  try { localStorage.setItem('geofoto-cars', JSON.stringify(list)); } catch {}
+}
+
+function matchScore(key, qv) {
+  let best = null;
+  for (const q of qv) {
+    const qs = q.replace(/ /g, '');
+    const k = key.replace(/ /g, '');
+    const s = k === qs ? -0.3 : key.startsWith(q) ? 0 : k.startsWith(qs) ? 0.5 : key.includes(' ' + q) ? 1 : null;
+    if (s != null && (best == null || s < best)) best = s;
+  }
+  return best;
+}
+
+function carSuggestions(raw) {
+  const qv = [...new Set([canon(raw), canon(raw, 'x')])];
+  const recent = recentCars();
+  if (!qv[0]) return recent.slice(0, 6).map(text => ({ text, recent: true }));
+  const scored = [];
+  for (const text of recent) {
+    if (matchScore(canon(text), qv) != null) scored.push({ text, recent: true, score: -1 });
+  }
+  for (const e of CAR_INDEX) {
+    let best = null;
+    const consider = (s, bonus) => { if (s != null && (best == null || s + bonus < best)) best = s + bonus; };
+    for (const k of e.modelKeys) consider(matchScore(k, qv), 1.2); // "rio", "газель", "cx5"
+    for (const k of e.keys) consider(matchScore(k, qv), e.make ? 0 : 1.5); // "kia", "kia r"
+    if (best != null && !scored.some(s => s.text === e.text)) scored.push({ text: e.text, make: e.make, score: best, order: e.order });
+  }
+  // once a make is typed exactly, show its models rather than the make itself
+  const exactMake = CAR_INDEX.find(e => e.make && qv.some(q => e.keys.includes(q)));
+  return scored
+    .filter(s => !(exactMake && s.make && s.text === exactMake.text))
+    .sort((a, b) => a.score - b.score || (a.order ?? -1) - (b.order ?? -1))
+    .slice(0, 8);
+}
+
+function renderSugg() {
+  const box = $('carSugg');
+  box.innerHTML = '';
+  if (document.activeElement !== $('car')) return;
+  for (const s of carSuggestions($('car').value)) {
+    const b = document.createElement('button');
+    if (s.recent) b.className = 'recent';
+    const sp = s.text.indexOf(' ');
+    b.innerHTML = sp > 0 && !s.make ? `<b>${esc(s.text.slice(0, sp))}</b>${esc(s.text.slice(sp))}` : `<b>${esc(s.text)}</b>`;
+    // mousedown/touch keeps focus in the input, so the keyboard stays open
+    b.addEventListener('pointerdown', e => e.preventDefault());
+    b.onclick = () => {
+      $('car').value = s.make ? s.text + ' ' : s.text;
+      if (s.make) { $('car').focus(); renderSugg(); } else { $('car').blur(); box.innerHTML = ''; }
+    };
+    box.appendChild(b);
+  }
+}
+$('car').addEventListener('input', renderSugg);
+$('car').addEventListener('focus', renderSugg);
+$('car').addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== $('car')) $('carSugg').innerHTML = ''; }, 150));
+$('car').onkeydown = e => { if (e.key === 'Enter') $('plateNext').click(); };
+
 function renderPlate() {
   $('plate').value = C.plate;
+  $('car').value = C.car || '';
+  $('carSugg').innerHTML = '';
   $('plateStrip').innerHTML = '';
   C.shots.forEach((s, i) => {
     const img = document.createElement('img');
@@ -807,9 +957,14 @@ $('plate').addEventListener('input', () => {
   if (up !== el.value) { el.value = up; el.setSelectionRange(pos, pos); }
 });
 $('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); });
-$('plate').onkeydown = e => { if (e.key === 'Enter') $('plateNext').click(); };
-$('plateNext').onclick = () => { C.plate = formatPlate($('plate').value); $('plate').blur(); go('done'); };
-$('plateSkip').onclick = () => { C.plate = ''; $('plate').blur(); go('done'); };
+$('plate').onkeydown = e => { if (e.key === 'Enter') $('car').focus(); };
+const saveCar = () => {
+  C.car = $('car').value.trim().replace(/\s+/g, ' ');
+  rememberCar(C.car);
+  document.activeElement.blur();
+};
+$('plateNext').onclick = () => { C.plate = formatPlate($('plate').value); saveCar(); go('done'); };
+$('plateSkip').onclick = () => { C.plate = ''; saveCar(); go('done'); };
 
 // ---------- summary ----------
 function renderDone() {
@@ -819,6 +974,7 @@ function renderDone() {
   if (!C.quick) {
     rows.push(['Нарушение', violationText()]);
     rows.push(['Госномер', C.plate || 'не указан']);
+    rows.push(['Марка и модель', C.car || 'не указаны']);
   }
   if (s) rows.push(['Время', `${fmtDate(s.when)} ${fmtTime(s.when).slice(0, 5)}`]);
   rows.push(['Адрес', place]);
@@ -880,7 +1036,7 @@ function buildComplaint() {
   const place = s.addr
     ? `по адресу: ${s.addr.full || s.addr.short}` + (coords ? ` (координаты ${coords})` : '')
     : coords ? `в точке с координатами ${coords}` : 'по адресу: [укажите адрес]';
-  const car = `транспортное средство с государственным регистрационным знаком ${C.plate || '[госномер]'}`;
+  const car = `транспортное средство${C.car ? ' ' + C.car : ''} с государственным регистрационным знаком ${C.plate || '[госномер]'}`;
   const what = C.violation ? `${car} ${C.violation.act}.` : `${car}: ${C.other || '[опишите нарушение]'}.`;
   const n = C.shots.length;
   return `${fmtDate(d)} в ${pad(d.getHours())}:${pad(d.getMinutes())} ${place} ${what}\n\n` +
