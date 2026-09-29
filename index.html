@@ -1309,12 +1309,12 @@ function showCropShot(i) {
   cropShot = i;
   const s = C.shots[i];
   cropSel = s.crop ? { ...s.crop.rect } : null;
+  $('cropTitle').textContent = C.shots.length > 1 ? `Снимок ${i + 1} из ${C.shots.length}` : 'Номер на снимке';
+  renderCropStrip(); // the strip must be in place before the free height for the photo is measured
   const img = $('cropImg');
   img.style.maxHeight = $('cropArea').clientHeight + 'px';
   img.onload = () => { drawCropRect(); drawCropPreview(); };
   img.src = s.thumb;
-  $('cropTitle').textContent = C.shots.length > 1 ? `Снимок ${i + 1} из ${C.shots.length}` : 'Номер на снимке';
-  renderCropStrip();
   drawCropRect();
   drawCropPreview();
 }
