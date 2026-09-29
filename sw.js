@@ -1,5 +1,5 @@
 // Network-first: always fresh when online, works from cache when offline.
-const CACHE = 'geofoto-v3';
+const CACHE = 'geofoto-v4';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

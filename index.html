@@ -161,6 +161,19 @@ function renderLive() {
 setInterval(renderLive, 1000);
 renderLive();
 
+// ---------- iOS viewport fix ----------
+// After the camera or the keyboard closes, iOS home-screen apps are left scrolled up a little.
+function resetScroll() {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text') return;
+  window.scrollTo(0, 0);
+  setTimeout(() => window.scrollTo(0, 0), 100);
+  setTimeout(() => window.scrollTo(0, 0), 400);
+}
+window.addEventListener('focus', resetScroll);
+window.addEventListener('pageshow', resetScroll);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) resetScroll(); });
+if (window.visualViewport) visualViewport.addEventListener('resize', resetScroll);
+
 // ---------- compass ----------
 const DIRS = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
 const fmtHeading = h => `${Math.round(h) % 360}° (${DIRS[Math.round(h / 45) % 8]})`;
@@ -207,6 +220,7 @@ const syncComment = () => {
 };
 $('comment').oninput = syncComment;
 $('comment').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
+$('comment').addEventListener('blur', () => setTimeout(resetScroll, 50));
 $('commentClear').onclick = () => { $('comment').value = ''; syncComment(); $('comment').focus(); };
 syncComment();
 
@@ -434,6 +448,7 @@ $('cam').addEventListener('change', async e => {
   if (!file) return;
   const now = Date.now();
   const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
+  resetScroll();
   $('busy').hidden = false;
   try {
     let p = fix;
@@ -468,6 +483,7 @@ $('cam').addEventListener('change', async e => {
     resultUrl = URL.createObjectURL(resultBlob);
     $('preview').src = resultUrl;
     $('result').hidden = false;
+    resetScroll();
   } catch (err) {
     alert('Ошибка обработки фото: ' + err.message);
   } finally {
