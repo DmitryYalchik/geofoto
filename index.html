@@ -29,7 +29,8 @@
   [hidden] { display: none !important; }
 
   .screen { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg);
-    padding: calc(var(--top) + 6px) 16px calc(var(--bottom) + 14px); }
+    /* buttons may sit inside the home-indicator zone, just clear of the indicator itself */
+    padding: calc(var(--top) + 6px) 16px max(12px, calc(var(--bottom) - 12px)); }
   .scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .grow { flex: 1; min-height: 0; }
 
@@ -88,7 +89,7 @@
   .strip img { height: 72px; border-radius: 8px; flex: none; }
 
   .done-ok { color: var(--ok); text-align: center; font-size: 14px; min-height: 20px; margin: 8px 0 0; }
-  .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   label.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
   label.switch input { width: 22px; height: 22px; flex: none; }
 
