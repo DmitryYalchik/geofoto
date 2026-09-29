@@ -25,6 +25,7 @@
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 14px; }
   .row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
+  .row[hidden] { display: none; }
   .row .label { color: var(--muted); flex: none; }
   .row .val { text-align: right; font-variant-numeric: tabular-nums; word-break: break-word; }
   .row.addr { flex-direction: column; gap: 4px; }
@@ -44,6 +45,30 @@
   .comment button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
     border: 0; border-radius: 50%; background: #2a323d; color: var(--muted); font-size: 14px; }
   .comment button[hidden] { display: none; }
+  .comment input.plate { font-weight: 600; letter-spacing: .5px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
+    color: var(--text); font-size: 14px; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .series { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--muted); }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); }
+  .seg button { padding: 8px 12px; border: 0; background: none; color: var(--text); font-size: 15px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  .series-info { margin: -2px 2px 10px; color: var(--muted); font-size: 14px; }
+  .series-info[hidden], .series-done[hidden], #complaint[hidden] { display: none; }
+  .series-info button { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 0 0 0 6px; }
+  .series-done { color: #7fd48b; text-align: center; font-size: 14px; margin: 8px 0 0; }
+  .secondary { width: 100%; margin-top: 10px; padding: 13px; border-radius: 14px; border: 1px solid var(--accent);
+    background: transparent; color: var(--accent); font-size: 16px; font-weight: 600; }
+  #complaint { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 10;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 12px); }
+  #complaint h2 { margin: 4px 0 6px; font-size: 20px; }
+  .hint.left { text-align: left; margin: 0 0 10px; }
+  #complaintText { flex: 1; min-height: 0; width: 100%; resize: none; padding: 12px; border-radius: 14px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); font: 16px/1.45 system-ui, -apple-system, sans-serif; }
+  #complaintCopy { background: var(--accent); color: #fff; }
+  #complaintClose { background: #2a323d; color: var(--text); }
   .shoot { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
     padding: 18px; border-radius: 18px; background: var(--accent); color: #fff; font-size: 19px;
     font-weight: 600; border: 0; cursor: pointer; }
@@ -79,23 +104,49 @@
     <summary>Настройки</summary>
     <label><input type="checkbox" id="optDms"> Координаты в градусах/минутах/секундах</label>
     <label><input type="checkbox" id="optExtra"> Показывать точность и высоту в подписи</label>
+    <label><input type="checkbox" id="optFull"> Почтовый адрес с индексом и районом</label>
   </details>
 
   <div class="spacer"></div>
   <div class="comment">
-    <input id="comment" type="text" placeholder="Комментарий или госномер" autocomplete="off" enterkeyhint="done" maxlength="200">
+    <input id="plate" class="plate" type="text" placeholder="Госномер, например А123БВ 777" autocomplete="off"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="14">
+    <button id="plateClear" aria-label="Очистить госномер" hidden>✕</button>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="comment">
+    <input id="comment" type="text" placeholder="Нарушение или комментарий" autocomplete="off" enterkeyhint="done" maxlength="200">
     <button id="commentClear" aria-label="Очистить комментарий" hidden>✕</button>
   </div>
+  <div class="series">
+    <span>Серия снимков</span>
+    <div class="seg" id="seriesSeg">
+      <button data-n="0">Нет</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button>
+    </div>
+  </div>
+  <p class="series-info" id="seriesInfo" hidden><span id="seriesText"></span> <button id="seriesReset">начать заново</button></p>
   <label class="shoot" id="shootBtn" for="cam">📷 Сфотографировать</label>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 
   <section id="result" hidden>
     <img id="preview" alt="Фото с отметкой">
+    <p class="series-done" id="seriesDone" hidden></p>
+    <button class="secondary" id="complaintBtn">📝 Текст жалобы</button>
     <div class="actions">
       <button id="againBtn">Ещё фото</button>
       <button id="saveBtn">Сохранить</button>
     </div>
     <p class="hint">Если кнопка не сработала: нажмите и удерживайте фото, затем «Сохранить в Фото».</p>
+  </section>
+
+  <section id="complaint" hidden>
+    <h2>Текст жалобы</h2>
+    <p class="hint left">Проверьте и при необходимости исправьте текст, затем скопируйте его в форму обращения (Госуслуги, сайт ГИБДД).</p>
+    <textarea id="complaintText" spellcheck="true"></textarea>
+    <div class="actions">
+      <button id="complaintClose">Закрыть</button>
+      <button id="complaintCopy">Скопировать</button>
+    </div>
   </section>
 
   <div id="busy" hidden>Обработка…</div>
@@ -105,7 +156,7 @@ const $ = id => document.getElementById(id);
 
 // ---------- settings ----------
 const S = (() => {
-  const def = { dms: false, extra: true };
+  const def = { dms: false, extra: true, full: false };
   try { return Object.assign(def, JSON.parse(localStorage.getItem('geofoto') || '{}')); }
   catch { return def; }
 })();
@@ -114,6 +165,8 @@ $('optDms').checked = S.dms;
 $('optExtra').checked = S.extra;
 $('optDms').onchange = e => { S.dms = e.target.checked; saveSettings(); renderLive(); };
 $('optExtra').onchange = e => { S.extra = e.target.checked; saveSettings(); };
+$('optFull').checked = S.full;
+$('optFull').onchange = e => { S.full = e.target.checked; saveSettings(); renderAddr(); };
 
 // ---------- formatting ----------
 const pad = n => String(n).padStart(2, '0');
@@ -164,7 +217,8 @@ renderLive();
 // ---------- iOS viewport fix ----------
 // After the camera or the keyboard closes, iOS home-screen apps are left scrolled up a little.
 function resetScroll() {
-  if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text') return;
+  const el = document.activeElement;
+  if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) return;
   window.scrollTo(0, 0);
   setTimeout(() => window.scrollTo(0, 0), 100);
   setTimeout(() => window.scrollTo(0, 0), 400);
@@ -212,17 +266,76 @@ $('compassBtn').onclick = async () => {
   }
 };
 
-// ---------- comment ----------
-try { $('comment').value = localStorage.getItem('geofoto-comment') || ''; } catch {}
-const syncComment = () => {
-  $('commentClear').hidden = !$('comment').value;
-  try { localStorage.setItem('geofoto-comment', $('comment').value); } catch {}
-};
-$('comment').oninput = syncComment;
-$('comment').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
-$('comment').addEventListener('blur', () => setTimeout(resetScroll, 50));
-$('commentClear').onclick = () => { $('comment').value = ''; syncComment(); $('comment').focus(); };
+// ---------- violation: plate, quick buttons, comment ----------
+const VIOLATIONS = [
+  { label: 'Парковка на тротуаре', act: 'припарковано на тротуаре', law: 'п. 12.2 ПДД РФ' },
+  { label: 'На газоне', act: 'размещено на газоне (озеленённой территории)', law: 'правил благоустройства территории' },
+  { label: 'Под знаком «Остановка запрещена»', act: 'остановлено в зоне действия знака 3.27 «Остановка запрещена»', law: 'п. 1.3 ПДД РФ' },
+  { label: 'На пешеходном переходе', act: 'остановлено на пешеходном переходе', law: 'п. 12.4 ПДД РФ' },
+];
+const findViolation = text => VIOLATIONS.find(v => v.label === text.trim());
+
+// Russian plates use only letters that look Latin, so Latin input is converted to Cyrillic.
+const LAT2CYR = { A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х' };
+const upPlate = v => v.toUpperCase().replace(/[ABEKMHOPCTYX]/g, ch => LAT2CYR[ch]);
+function formatPlate(v) {
+  v = upPlate(v).trim();
+  const m = v.replace(/\s+/g, '').match(/^([АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
+  return m ? `${m[1]} ${m[2]}` : v;
+}
+
+function bindField(id, key) {
+  const input = $(id), clear = $(id + 'Clear');
+  try { input.value = localStorage.getItem(key) || ''; } catch {}
+  const sync = () => {
+    clear.hidden = !input.value;
+    try { localStorage.setItem(key, input.value); } catch {}
+    renderChips();
+  };
+  input.addEventListener('input', sync);
+  input.onkeydown = e => { if (e.key === 'Enter') input.blur(); };
+  input.addEventListener('blur', () => setTimeout(resetScroll, 50));
+  clear.onclick = () => { input.value = ''; sync(); input.focus(); };
+  return sync;
+}
+
+function renderChips() {
+  const cur = $('comment').value.trim();
+  for (const b of $('chips').children) b.classList.toggle('on', b.textContent === cur);
+}
+for (const v of VIOLATIONS) {
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = v.label;
+  b.onclick = () => { $('comment').value = $('comment').value.trim() === v.label ? '' : v.label; syncComment(); };
+  $('chips').appendChild(b);
+}
+
+const syncComment = bindField('comment', 'geofoto-comment');
+const syncPlate = bindField('plate', 'geofoto-plate');
+$('plate').addEventListener('input', () => {
+  const el = $('plate'), pos = el.selectionStart, up = upPlate(el.value);
+  if (up !== el.value) { el.value = up; el.setSelectionRange(pos, pos); syncPlate(); }
+});
+$('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); syncPlate(); });
 syncComment();
+syncPlate();
+
+// ---------- series of shots ----------
+const series = (() => {
+  try { return Object.assign({ size: 0, n: 1 }, JSON.parse(localStorage.getItem('geofoto-series') || '{}')); }
+  catch { return { size: 0, n: 1 }; }
+})();
+function renderSeries() {
+  try { localStorage.setItem('geofoto-series', JSON.stringify(series)); } catch {}
+  for (const b of $('seriesSeg').children) b.classList.toggle('on', +b.dataset.n === series.size);
+  $('seriesInfo').hidden = !series.size;
+  $('seriesText').textContent = `Следующий: снимок ${series.n} из ${series.size}.`;
+  $('seriesReset').hidden = series.n === 1;
+}
+for (const b of $('seriesSeg').children) b.onclick = () => { series.size = +b.dataset.n; series.n = 1; renderSeries(); };
+$('seriesReset').onclick = () => { series.n = 1; renderSeries(); };
+renderSeries();
 
 // ---------- geolocation ----------
 let watchId = null, geoAskedAt = 0, geoTries = 0;
@@ -264,8 +377,9 @@ function freshFix() {
 startGeo();
 
 // ---------- reverse geocoding (OpenStreetMap Nominatim, free) ----------
-let addr = { text: null, lat: 0, lon: 0 };
+let addr = { text: null, full: null, lat: 0, lon: 0 };
 let geoInflight = null, lastGeoAt = 0;
+const addrText = () => (S.full ? addr.full : addr.text) || null;
 
 function formatAddress(j) {
   const a = j.address || {};
@@ -273,6 +387,20 @@ function formatAddress(j) {
   const place = a.city || a.town || a.village || a.hamlet || a.municipality || a.county;
   const parts = [street || a.suburb || a.neighbourhood, place, a.state, a.country].filter(Boolean);
   return [...new Set(parts)].join(', ') || j.display_name || '';
+}
+
+// Postal format used in official complaints: "125009, г. Москва, Тверской район, Театральная площадь, д. 1"
+function formatAddressFull(j) {
+  const a = j.address || {};
+  const place = a.city ? 'г. ' + a.city : a.town || a.village || a.hamlet || a.municipality;
+  const district = a.city_district || a.suburb || a.county;
+  const road = a.road || a.pedestrian || a.footway || a.path || a.square;
+  const parts = [a.postcode, a.city ? null : a.state, place, district, road, a.house_number && 'д. ' + a.house_number];
+  return [...new Set(parts.filter(Boolean))].join(', ') || formatAddress(j);
+}
+
+function renderAddr() {
+  $('liveAddr').textContent = addrText() || '—';
 }
 
 function geocode(lat, lon) {
@@ -284,10 +412,10 @@ function geocode(lat, lon) {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=ru&lat=${lat}&lon=${lon}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    const text = formatAddress(await r.json());
-    addr = { text, lat, lon };
-    $('liveAddr').textContent = text || '—';
-    return text;
+    const j = await r.json();
+    addr = { text: formatAddress(j), full: formatAddressFull(j), lat, lon };
+    renderAddr();
+    return addr.text;
   }).finally(() => { geoInflight = null; });
   return geoInflight;
 }
@@ -298,10 +426,10 @@ async function addressFor(lat, lon) {
   for (let i = 0; i < 2; i++) {
     try {
       await withTimeout(geocode(lat, lon), 6000);
-      if (addr.text && dist(lat, lon, addr.lat, addr.lon) < 50) return addr.text;
+      if (addr.text && dist(lat, lon, addr.lat, addr.lon) < 50) return addrText();
     } catch { break; }
   }
-  return addr.text && dist(lat, lon, addr.lat, addr.lon) < 150 ? addr.text : null;
+  return addr.text && dist(lat, lon, addr.lat, addr.lon) < 150 ? addrText() : null;
 }
 
 // ---------- drawing ----------
@@ -334,11 +462,12 @@ function stripLayout(w, info) {
   const maxW = w - padding * 2;
   const lines = [];
   const add = text => lines.push(...wrap(ctx, text, maxW, 3));
-  add(`Дата: ${info.date}   Время: ${info.time}`);
+  add((info.shot ? `${info.shot}   ` : '') + `Дата: ${info.date}   Время: ${info.time}`);
   if (info.coords) add(`Координаты: ${info.coords}` + (info.extra ? `   ${info.extra}` : ''));
   if (info.heading) add(`Направление съёмки: ${info.heading}`);
   add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
-  if (info.comment) add(`Комментарий: ${info.comment}`);
+  if (info.plate) add(`Госномер: ${info.plate}`);
+  if (info.comment) add(`${findViolation(info.comment) ? 'Нарушение' : 'Комментарий'}: ${info.comment}`);
   const lineH = Math.round(fs * 1.35);
   return { fs, padding, lineH, lines, height: lines.length * lineH + padding * 2 };
 }
@@ -455,19 +584,24 @@ $('cam').addEventListener('change', async e => {
     if ('geolocation' in navigator && (!p || now - p.timestamp > 60000)) p = await freshFix().catch(() => fix);
     const c = p && p.coords;
     const address = c ? await addressFor(c.latitude, c.longitude) : null;
+    const plate = formatPlate($('plate').value);
+    const comment = $('comment').value.trim();
+    const shot = series.size ? { n: series.n, size: series.size } : null;
 
     const img = await loadImage(file);
     let w = img.naturalWidth, h = img.naturalHeight;
     const k = Math.min(1, Math.sqrt(15000000 / (w * h))); // iOS canvas size limit, with room for the strip
     w = Math.round(w * k); h = Math.round(h * k);
     const strip = stripLayout(w, {
+      shot: shot && `Снимок ${shot.n} из ${shot.size}`,
       date: fmtDate(when),
       time: `${fmtTime(when)} (UTC${tzOffset(when)})`,
       coords: c ? fmtCoords(c.latitude, c.longitude) : null,
       extra: c && S.extra ? fmtExtra(c) : null,
       heading: shotHeading != null ? fmtHeading(shotHeading) : null,
       address,
-      comment: $('comment').value.trim(),
+      plate,
+      comment,
     });
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h + strip.height;
@@ -482,6 +616,17 @@ $('cam').addEventListener('change', async e => {
     if (resultUrl) URL.revokeObjectURL(resultUrl);
     resultUrl = URL.createObjectURL(resultBlob);
     $('preview').src = resultUrl;
+
+    lastShot = { when, coords: c, address: addr.full && c && dist(c.latitude, c.longitude, addr.lat, addr.lon) < 150 ? addr.full : address,
+      plate, comment, photos: shot ? shot.n : 1 };
+    $('seriesDone').hidden = !shot;
+    if (shot) {
+      $('seriesDone').textContent = shot.n < shot.size
+        ? `Снимок ${shot.n} из ${shot.size}. Сохраните его и сделайте следующий.`
+        : `Серия из ${shot.size} снимков завершена ✓`;
+      series.n = shot.n < shot.size ? shot.n + 1 : 1;
+      renderSeries();
+    }
     $('result').hidden = false;
     resetScroll();
   } catch (err) {
@@ -501,6 +646,44 @@ $('saveBtn').onclick = async () => {
   }
 };
 $('againBtn').onclick = () => { $('result').hidden = true; rememberHeading(); $('cam').click(); };
+
+// ---------- complaint text ----------
+let lastShot = null;
+
+function buildComplaint(s) {
+  const d = s.when;
+  const place = s.address
+    ? `по адресу: ${s.address}` + (s.coords ? ` (координаты ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)})` : '')
+    : s.coords ? `в точке с координатами ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : 'по адресу: [укажите адрес]';
+  const car = `транспортное средство с государственным регистрационным знаком ${s.plate || '[госномер]'}`;
+  const v = findViolation(s.comment || '');
+  const what = v
+    ? `${car} ${v.act}, что является нарушением ${v.law}.`
+    : `${car}: ${s.comment || '[опишите нарушение]'}.`;
+  const n = s.photos;
+  return `${fmtDate(d)} в ${pad(d.getHours())}:${pad(d.getMinutes())} ${place} ${what}\n\n` +
+    'Прошу провести проверку по данному факту и привлечь водителя (собственника) транспортного средства ' +
+    'к административной ответственности.\n\n' +
+    `Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются (${n} ${n === 1 ? 'снимок' : n < 5 ? 'снимка' : 'снимков'}).`;
+}
+
+$('complaintBtn').onclick = () => {
+  $('complaintText').value = buildComplaint(lastShot);
+  $('complaintCopy').textContent = 'Скопировать';
+  $('complaint').hidden = false;
+};
+$('complaintClose').onclick = () => { $('complaint').hidden = true; resetScroll(); };
+$('complaintCopy').onclick = async () => {
+  const t = $('complaintText');
+  try {
+    await navigator.clipboard.writeText(t.value);
+  } catch {
+    t.select();
+    document.execCommand('copy');
+    t.blur();
+  }
+  $('complaintCopy').textContent = 'Скопировано ✓';
+};
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
