@@ -36,7 +36,14 @@
   details { margin-top: 4px; color: var(--muted); font-size: 15px; }
   details label { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: var(--text); }
   details input { width: 20px; height: 20px; }
-  .spacer { flex: 1; }
+  .spacer { flex: 1; min-height: 16px; }
+  .comment { position: relative; margin-bottom: 10px; }
+  .comment input { width: 100%; padding: 14px 44px 14px 14px; border-radius: 14px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); font-size: 16px; }
+  .comment input:focus { outline: none; border-color: var(--accent); }
+  .comment button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
+    border: 0; border-radius: 50%; background: #2a323d; color: var(--muted); font-size: 14px; }
+  .comment button[hidden] { display: none; }
   .shoot { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
     padding: 18px; border-radius: 18px; background: var(--accent); color: #fff; font-size: 19px;
     font-weight: 600; border: 0; cursor: pointer; }
@@ -61,10 +68,12 @@
     <div class="row"><span class="label">Дата и время</span><span class="val" id="liveTime">—</span></div>
     <div class="row"><span class="label">Координаты</span><span class="val" id="liveCoords">Определяю…</span></div>
     <div class="row"><span class="label">Точность</span><span class="val" id="liveAcc">—</span></div>
+    <div class="row"><span class="label">Направление</span><span class="val" id="liveDir">—</span></div>
     <div class="row addr"><span class="label">Адрес</span><span class="val" id="liveAddr">—</span></div>
   </section>
   <p class="status" id="status"></p>
   <button class="geo-btn" id="geoBtn" hidden>📍 Разрешить геолокацию</button>
+  <button class="geo-btn" id="compassBtn" hidden>🧭 Включить компас</button>
 
   <details>
     <summary>Настройки</summary>
@@ -73,7 +82,11 @@
   </details>
 
   <div class="spacer"></div>
-  <label class="shoot" for="cam">📷 Сфотографировать</label>
+  <div class="comment">
+    <input id="comment" type="text" placeholder="Комментарий или госномер" autocomplete="off" enterkeyhint="done" maxlength="200">
+    <button id="commentClear" aria-label="Очистить комментарий" hidden>✕</button>
+  </div>
+  <label class="shoot" id="shootBtn" for="cam">📷 Сфотографировать</label>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 
   <section id="result" hidden>
@@ -147,6 +160,55 @@ function renderLive() {
 }
 setInterval(renderLive, 1000);
 renderLive();
+
+// ---------- compass ----------
+const DIRS = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
+const fmtHeading = h => `${Math.round(h) % 360}° (${DIRS[Math.round(h / 45) % 8]})`;
+let heading = null, headingAt = 0;
+
+function onOrient(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number' && e.webkitCompassHeading >= 0) h = e.webkitCompassHeading; // iOS
+  else if (e.absolute && e.alpha != null) h = (360 - e.alpha) % 360;                                         // Android
+  if (h == null) return;
+  heading = h;
+  headingAt = Date.now();
+  $('compassBtn').hidden = true;
+  $('liveDir').textContent = fmtHeading(h);
+}
+function startCompass() {
+  window.addEventListener('deviceorientationabsolute', onOrient);
+  window.addEventListener('deviceorientation', onOrient);
+  setTimeout(() => { if (heading == null) $('liveDir').textContent = 'нет данных компаса'; }, 3000);
+}
+if (!('DeviceOrientationEvent' in window)) {
+  $('liveDir').textContent = 'недоступно';
+} else if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+  // iOS: access to the compass must be requested from a tap
+  $('compassBtn').hidden = false;
+  $('liveDir').textContent = 'нужно разрешение';
+} else {
+  startCompass();
+}
+$('compassBtn').onclick = async () => {
+  try {
+    if (await DeviceOrientationEvent.requestPermission() === 'granted') startCompass();
+    else $('liveDir').textContent = 'доступ запрещён';
+  } catch (e) {
+    $('liveDir').textContent = 'ошибка: ' + e.message;
+  }
+};
+
+// ---------- comment ----------
+try { $('comment').value = localStorage.getItem('geofoto-comment') || ''; } catch {}
+const syncComment = () => {
+  $('commentClear').hidden = !$('comment').value;
+  try { localStorage.setItem('geofoto-comment', $('comment').value); } catch {}
+};
+$('comment').oninput = syncComment;
+$('comment').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
+$('commentClear').onclick = () => { $('comment').value = ''; syncComment(); $('comment').focus(); };
+syncComment();
 
 // ---------- geolocation ----------
 let watchId = null, geoAskedAt = 0, geoTries = 0;
@@ -260,7 +322,9 @@ function stripLayout(w, info) {
   const add = text => lines.push(...wrap(ctx, text, maxW, 3));
   add(`Дата: ${info.date}   Время: ${info.time}`);
   if (info.coords) add(`Координаты: ${info.coords}` + (info.extra ? `   ${info.extra}` : ''));
+  if (info.heading) add(`Направление съёмки: ${info.heading}`);
   add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
+  if (info.comment) add(`Комментарий: ${info.comment}`);
   const lineH = Math.round(fs * 1.35);
   return { fs, padding, lineH, lines, height: lines.length * lineH + padding * 2 };
 }
@@ -359,6 +423,11 @@ async function withExif(jpegBlob, date, coords) {
 // ---------- capture flow ----------
 let resultBlob = null, resultName = '', resultUrl = null;
 
+// The page is paused while the camera is open, so take the direction the phone faces when the shutter button is tapped.
+let shotHeading = null;
+const rememberHeading = () => { shotHeading = heading != null && Date.now() - headingAt < 5000 ? heading : null; };
+$('shootBtn').addEventListener('click', rememberHeading);
+
 $('cam').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
@@ -381,7 +450,9 @@ $('cam').addEventListener('change', async e => {
       time: `${fmtTime(when)} (UTC${tzOffset(when)})`,
       coords: c ? fmtCoords(c.latitude, c.longitude) : null,
       extra: c && S.extra ? fmtExtra(c) : null,
+      heading: shotHeading != null ? fmtHeading(shotHeading) : null,
       address,
+      comment: $('comment').value.trim(),
     });
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h + strip.height;
@@ -413,7 +484,7 @@ $('saveBtn').onclick = async () => {
     a.href = resultUrl; a.download = resultName; a.click();
   }
 };
-$('againBtn').onclick = () => { $('result').hidden = true; $('cam').click(); };
+$('againBtn').onclick = () => { $('result').hidden = true; rememberHeading(); $('cam').click(); };
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
