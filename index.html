@@ -69,7 +69,7 @@
   <details>
     <summary>Настройки</summary>
     <label><input type="checkbox" id="optDms"> Координаты в градусах/минутах/секундах</label>
-    <label><input type="checkbox" id="optExtra"> Показывать точность и высоту на фото</label>
+    <label><input type="checkbox" id="optExtra"> Показывать точность и высоту в подписи</label>
   </details>
 
   <div class="spacer"></div>
@@ -89,7 +89,6 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const FONT = 'system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
 
 // ---------- settings ----------
 const S = (() => {
@@ -123,9 +122,9 @@ function fmtCoords(lat, lon) {
   return S.dms ? `${toDms(lat, 'N', 'S')} ${toDms(lon, 'E', 'W')}` : `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 }
 function fmtExtra(c) {
-  const parts = [`точность ±${Math.round(c.accuracy)} м`];
-  if (c.altitude != null) parts.push(`высота ${Math.round(c.altitude)} м`);
-  return parts.join(' · ');
+  const parts = [`Точность: ±${Math.round(c.accuracy)} м`];
+  if (c.altitude != null) parts.push(`Высота: ${Math.round(c.altitude)} м`);
+  return parts.join('   ');
 }
 function dist(lat1, lon1, lat2, lon2) {
   const R = 6371000, r = Math.PI / 180;
@@ -248,40 +247,31 @@ function wrap(ctx, text, maxW, maxLines) {
   return lines;
 }
 
-function drawOverlay(ctx, w, h, info) {
-  const fs = Math.max(16, Math.min(w, h) * 0.034);
-  const padding = fs * 0.9;
+// Black info strip under the photo, in the style of traffic-camera fine photos.
+const MONO = 'Menlo, "Courier New", monospace';
+
+function stripLayout(w, info) {
+  const fs = Math.max(12, Math.round(w * 0.017));
+  const padding = Math.round(fs * 0.8);
+  const ctx = document.createElement('canvas').getContext('2d');
+  ctx.font = `${fs}px ${MONO}`;
   const maxW = w - padding * 2;
   const lines = [];
-  const add = (text, size, weight) => {
-    ctx.font = `${weight} ${size}px ${FONT}`;
-    for (const t of wrap(ctx, text, maxW, 3)) lines.push({ t, size, weight });
-  };
-  add(info.time, fs * 1.15, 700);
-  if (info.coords) add(info.coords, fs, 600);
-  if (info.extra) add(info.extra, fs * 0.8, 400);
-  add(info.address || (info.coords ? 'Адрес не определён' : 'Местоположение не определено'), fs, 400);
+  const add = text => lines.push(...wrap(ctx, text, maxW, 3));
+  add(`Дата: ${info.date}   Время: ${info.time}`);
+  if (info.coords) add(`Координаты: ${info.coords}` + (info.extra ? `   ${info.extra}` : ''));
+  add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
+  const lineH = Math.round(fs * 1.35);
+  return { fs, padding, lineH, lines, height: lines.length * lineH + padding * 2 };
+}
 
-  const textH = lines.reduce((s, l) => s + l.size * 1.3, 0);
-  const boxH = textH + padding * 2.5;
-  const g = ctx.createLinearGradient(0, h - boxH, 0, h);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(0.35, 'rgba(0,0,0,0.55)');
-  g.addColorStop(1, 'rgba(0,0,0,0.75)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, h - boxH, w, boxH);
-
+function drawStrip(ctx, y0, w, L) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, y0, w, L.height);
   ctx.fillStyle = '#fff';
-  ctx.textBaseline = 'alphabetic';
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
-  ctx.shadowBlur = fs * 0.2;
-  let y = h - padding - textH;
-  for (const l of lines) {
-    y += l.size * 1.3;
-    ctx.font = `${l.weight} ${l.size}px ${FONT}`;
-    ctx.fillText(l.t, padding, y - l.size * 0.3);
-  }
-  ctx.shadowBlur = 0;
+  ctx.font = `${L.fs}px ${MONO}`;
+  ctx.textBaseline = 'top';
+  L.lines.forEach((t, i) => ctx.fillText(t, L.padding, y0 + L.padding + i * L.lineH + L.fs * 0.1));
 }
 
 async function loadImage(file) {
@@ -384,18 +374,20 @@ $('cam').addEventListener('change', async e => {
 
     const img = await loadImage(file);
     let w = img.naturalWidth, h = img.naturalHeight;
-    const k = Math.min(1, Math.sqrt(16000000 / (w * h))); // iOS canvas size limit
+    const k = Math.min(1, Math.sqrt(15000000 / (w * h))); // iOS canvas size limit, with room for the strip
     w = Math.round(w * k); h = Math.round(h * k);
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    drawOverlay(ctx, w, h, {
-      time: `${fmtDate(when)} ${fmtTime(when)} (UTC${tzOffset(when)})`,
+    const strip = stripLayout(w, {
+      date: fmtDate(when),
+      time: `${fmtTime(when)} (UTC${tzOffset(when)})`,
       coords: c ? fmtCoords(c.latitude, c.longitude) : null,
       extra: c && S.extra ? fmtExtra(c) : null,
       address,
     });
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h + strip.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    drawStrip(ctx, h, w, strip);
     const jpeg = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
     canvas.width = canvas.height = 0;
 
