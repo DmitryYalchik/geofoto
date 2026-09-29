@@ -2,11 +2,12 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ГеоФото">
+<meta name="format-detection" content="telephone=no">
 <meta name="theme-color" content="#0b0f14">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="manifest" href="manifest.json">
@@ -14,140 +15,222 @@
 <style>
   :root {
     --bg: #0b0f14; --card: #151b23; --line: #232c37; --text: #e8edf2;
-    --muted: #8a97a6; --accent: #2f8cff; --danger: #ff6b6b;
+    --muted: #8a97a6; --accent: #2f8cff; --danger: #ff6b6b; --ok: #7fd48b;
+    --top: env(safe-area-inset-top); --bottom: env(safe-area-inset-bottom);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.4 system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; }
-  body { min-height: 100dvh; padding: calc(env(safe-area-inset-top) + 12px) 16px
-    calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; }
-  h1 { font-size: 22px; margin: 4px 0 16px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 14px; }
-  .row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  /* App-like: the page itself never scrolls, bounces or zooms; only marked areas scroll inside. */
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: var(--bg);
+    color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+  body { position: fixed; inset: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  input, textarea { -webkit-user-select: text; user-select: text; font-size: 16px; } /* >= 16px: iOS does not zoom on focus */
+  button { font: inherit; color: inherit; cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg);
+    padding: calc(var(--top) + 6px) 16px calc(var(--bottom) + 14px); }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .grow { flex: 1; min-height: 0; }
+
+  .bar { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin-bottom: 8px; }
+  .bar .back { border: 0; background: none; color: var(--accent); font-size: 17px; padding: 8px 8px 8px 0; min-width: 76px; text-align: left; }
+  .bar .title { font-size: 17px; font-weight: 600; text-align: center; flex: 1; }
+  .bar .step { min-width: 76px; text-align: right; color: var(--muted); font-size: 14px; }
+  .bar .icon { border: 0; background: none; font-size: 22px; padding: 6px 0 6px 12px; min-width: 76px; text-align: right; color: var(--muted); }
+  h1 { font-size: 26px; margin: 0; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 2px 14px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
   .row:last-child { border-bottom: 0; }
-  .row[hidden] { display: none; }
   .row .label { color: var(--muted); flex: none; }
-  .row .val { text-align: right; font-variant-numeric: tabular-nums; word-break: break-word; }
-  .row.addr { flex-direction: column; gap: 4px; }
-  .row.addr .val { text-align: left; }
-  .status { color: var(--danger); min-height: 1.4em; margin: 10px 2px; font-size: 14px; }
-  .geo-btn { width: 100%; padding: 13px; margin-bottom: 8px; border-radius: 14px; border: 1px solid var(--accent);
-    background: transparent; color: var(--accent); font-size: 16px; font-weight: 600; }
-  .geo-btn[hidden] { display: none; }
-  details { margin-top: 4px; color: var(--muted); font-size: 15px; }
-  details label { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: var(--text); }
-  details input { width: 20px; height: 20px; }
-  .spacer { flex: 1; min-height: 16px; }
-  .comment { position: relative; margin-bottom: 10px; }
-  .comment input { width: 100%; padding: 14px 44px 14px 14px; border-radius: 14px; border: 1px solid var(--line);
-    background: var(--card); color: var(--text); font-size: 16px; }
-  .comment input:focus { outline: none; border-color: var(--accent); }
-  .comment button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px;
-    border: 0; border-radius: 50%; background: #2a323d; color: var(--muted); font-size: 14px; }
-  .comment button[hidden] { display: none; }
-  .comment input.plate { font-weight: 600; letter-spacing: .5px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-  .chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
-    color: var(--text); font-size: 14px; }
-  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  #complaint[hidden] { display: none; }
-  .series-done { color: var(--muted); text-align: center; font-size: 13px; margin: 8px 0 0; }
-  .result-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--text); font-size: 15px; }
-  .result-top button { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 6px 0; }
-  #deleteBtn { color: var(--danger); }
-  .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 8px 0 0; font-variant-numeric: tabular-nums; }
-  .secondary { width: 100%; margin-top: 10px; padding: 13px; border-radius: 14px; border: 1px solid var(--accent);
-    background: transparent; color: var(--accent); font-size: 16px; font-weight: 600; }
-  #complaint { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 10;
-    padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 12px); }
-  #complaint h2 { margin: 4px 0 6px; font-size: 20px; }
-  .hint.left { text-align: left; margin: 0 0 10px; }
-  #complaintText { flex: 1; min-height: 0; width: 100%; resize: none; padding: 12px; border-radius: 14px;
-    border: 1px solid var(--line); background: var(--card); color: var(--text); font: 16px/1.45 system-ui, -apple-system, sans-serif; }
-  #complaintCopy { background: var(--accent); color: #fff; }
-  #complaintClose { background: #2a323d; color: var(--text); }
-  .shoot { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
-    padding: 18px; border-radius: 18px; background: var(--accent); color: #fff; font-size: 19px;
-    font-weight: 600; border: 0; cursor: pointer; }
-  .shoot:active { opacity: .8; }
-  #result { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column;
-    padding: calc(env(safe-area-inset-top) + 8px) 12px calc(env(safe-area-inset-bottom) + 12px); }
-  #result[hidden], #busy[hidden] { display: none; }
-  #preview { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
-  .actions { display: flex; gap: 10px; margin-top: 10px; }
-  .actions button { flex: 1; padding: 15px; border-radius: 14px; border: 0; font-size: 17px; font-weight: 600; }
-  #saveBtn { background: var(--accent); color: #fff; }
-  #againBtn { background: #2a323d; color: var(--text); }
-  .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 8px 0 0; }
-  #busy { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center;
-    justify-content: center; font-size: 18px; }
+  .row .val { text-align: right; font-variant-numeric: tabular-nums; min-width: 0; }
+  .row.col { flex-direction: column; gap: 2px; }
+  .row.col .val { text-align: left; }
+  .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .status { color: var(--danger); font-size: 14px; margin: 10px 2px 0; }
+
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 16px;
+    border-radius: 16px; border: 0; background: var(--accent); color: #fff; font-size: 18px; font-weight: 600; }
+  .btn:active, .opt:active { opacity: .75; }
+  .btn:disabled { opacity: .35; }
+  .btn.ghost { background: transparent; border: 1px solid var(--accent); color: var(--accent); font-size: 16px; padding: 13px; }
+  .btn.gray { background: #2a323d; color: var(--text); font-size: 16px; padding: 14px; }
+  .btn + .btn, .btns + .btn, .btn + .btns { margin-top: 10px; }
+  .btns { display: flex; gap: 10px; }
+  .btns .btn { margin-top: 0; }
+  .link { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 10px; }
+
+  .opts { display: flex; flex-direction: column; gap: 10px; }
+  .opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 16px; border-radius: 16px; text-align: left;
+    border: 1px solid var(--line); background: var(--card); font-size: 17px; }
+  .opt .ico { font-size: 22px; width: 28px; text-align: center; }
+  .opt.on { border-color: var(--accent); }
+  .field { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+  .field:focus { outline: none; border-color: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; align-content: start; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--card); border: 0; padding: 0; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb span { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.65); color: #fff; font-size: 12px; padding: 1px 7px; border-radius: 8px; }
+  .empty { color: var(--muted); text-align: center; margin-top: 30%; }
+
+  .plate-input { width: 100%; padding: 18px 12px; border-radius: 16px; border: 2px solid var(--line); background: #fff; color: #111;
+    font: 700 30px/1 Menlo, "Courier New", monospace; text-align: center; letter-spacing: 1px; text-transform: uppercase; }
+  .plate-input:focus { outline: none; border-color: var(--accent); }
+  .plate-input::placeholder { color: #b5bcc4; font-weight: 400; }
+  .strip { display: flex; gap: 6px; overflow-x: auto; margin: 12px 0; }
+  .strip img { height: 72px; border-radius: 8px; flex: none; }
+
+  .done-ok { color: var(--ok); text-align: center; font-size: 14px; min-height: 20px; margin: 8px 0 0; }
+  .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  label.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  label.switch input { width: 22px; height: 22px; flex: none; }
+
+  #viewer { background: #000; }
+  #viewerImg { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+  .vstrip { display: flex; gap: 6px; overflow-x: auto; padding-top: 10px; flex: none; justify-content: safe center; }
+  .vstrip img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; flex: none; opacity: .5; border: 2px solid transparent; }
+  .vstrip img.on { opacity: 1; border-color: var(--accent); }
+  #complaintText { flex: 1; min-height: 0; width: 100%; resize: none; padding: 12px; border-radius: 14px; margin-bottom: 10px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text); line-height: 1.45; }
+  #busy { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center;
+    font-size: 18px; z-index: 50; text-align: center; padding: 20px; }
 </style>
 </head>
 <body>
-  <h1>ГеоФото</h1>
 
-  <section class="card">
-    <div class="row"><span class="label">Дата и время</span><span class="val" id="liveTime">—</span></div>
-    <div class="row"><span class="label">Координаты</span><span class="val" id="liveCoords">Определяю…</span></div>
-    <div class="row"><span class="label">Точность</span><span class="val" id="liveAcc">—</span></div>
-    <div class="row"><span class="label">Направление</span><span class="val" id="liveDir">—</span></div>
-    <div class="row addr"><span class="label">Адрес</span><span class="val" id="liveAddr">—</span></div>
-  </section>
-  <p class="status" id="status"></p>
-  <button class="geo-btn" id="geoBtn" hidden>📍 Разрешить геолокацию</button>
-  <button class="geo-btn" id="compassBtn" hidden>🧭 Включить компас</button>
-
-  <details>
-    <summary>Настройки</summary>
-    <label><input type="checkbox" id="optDms"> Координаты в градусах/минутах/секундах</label>
-    <label><input type="checkbox" id="optExtra"> Показывать точность и высоту в подписи</label>
-    <label><input type="checkbox" id="optFull"> Почтовый адрес с индексом и районом</label>
-  </details>
-
-  <div class="spacer"></div>
-  <div class="comment">
-    <input id="plate" class="plate" type="text" placeholder="Госномер, например А123ВС 777" autocomplete="off"
-      autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="14">
-    <button id="plateClear" aria-label="Очистить госномер" hidden>✕</button>
+<!-- ============ Home ============ -->
+<section class="screen" id="scr-home">
+  <div class="bar"><h1>ГеоФото</h1><button class="icon" id="toSettings" aria-label="Настройки">⚙︎</button></div>
+  <div class="scroll">
+    <div class="card">
+      <div class="row"><span class="label">Время</span><span class="val" id="liveTime">—</span></div>
+      <div class="row"><span class="label">Координаты</span><span class="val" id="liveCoords">Определяю…</span></div>
+      <div class="row"><span class="label">Направление</span><span class="val" id="liveDir">—</span></div>
+      <div class="row col"><span class="label">Адрес</span><span class="val clamp" id="liveAddr">—</span></div>
+    </div>
+    <p class="status" id="status"></p>
+    <button class="btn ghost" id="geoBtn" hidden>📍 Разрешить геолокацию</button>
+    <button class="btn ghost" id="compassBtn" hidden>🧭 Включить компас</button>
   </div>
-  <div class="chips" id="chips"></div>
-  <div class="comment">
-    <input id="comment" type="text" placeholder="Нарушение или комментарий" autocomplete="off" enterkeyhint="done" maxlength="200">
-    <button id="commentClear" aria-label="Очистить комментарий" hidden>✕</button>
-  </div>
-  <label class="shoot" id="shootBtn" for="cam">📷 Сфотографировать</label>
+  <button class="btn ghost" id="resumeBtn" hidden></button>
+  <button class="btn" id="newCaseBtn">🚗 Новое нарушение</button>
+  <button class="btn gray" id="quickBtn">📷 Просто фото с координатами</button>
   <p class="build" id="build"></p>
+</section>
+
+<!-- ============ Step 1: violation type ============ -->
+<section class="screen" id="scr-type" hidden>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Что нарушено?</span><span class="step">1 из 3</span></div>
+  <div class="scroll">
+    <div class="opts" id="typeList"></div>
+    <div id="otherBox" hidden>
+      <input class="field" id="otherText" type="text" placeholder="Опишите нарушение" autocomplete="off" enterkeyhint="next" maxlength="200" style="margin-top:10px">
+      <button class="btn" id="otherNext" style="margin-top:10px">Далее</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Step 2: photos ============ -->
+<section class="screen" id="scr-photos" hidden>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Снимки</span><span class="step" id="photosStep">2 из 3</span></div>
+  <p class="sub" id="photosSub"></p>
+  <div class="scroll">
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="gridEmpty">Пока нет снимков</p>
+  </div>
+  <label class="btn" id="shootBtn" for="cam" style="margin-top:12px">📷 Сделать снимок</label>
+  <button class="btn gray" id="photosNext" disabled>Далее ›</button>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+</section>
 
-  <section id="result" hidden>
-    <div class="result-top">
-      <button id="closeBtn">✕ Закрыть</button>
-      <span id="seriesCount"></span>
-      <button id="deleteBtn">Удалить снимок</button>
-    </div>
-    <img id="preview" alt="Фото с отметкой">
-    <p class="series-done" id="seriesHint"></p>
-    <button class="secondary" id="complaintBtn">📝 Текст жалобы</button>
-    <div class="actions">
-      <button id="againBtn">Ещё фото</button>
-      <button id="saveBtn">Сохранить</button>
-    </div>
-  </section>
+<!-- ============ Step 3: plate ============ -->
+<section class="screen" id="scr-plate" hidden>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Госномер</span><span class="step">3 из 3</span></div>
+  <div class="scroll">
+    <input class="plate-input" id="plate" type="text" placeholder="А123ВС 777" autocomplete="off"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="14">
+    <p class="sub" style="margin-top:8px">Латинские буквы заменятся на русские. Нажмите на снимок, чтобы рассмотреть номер.</p>
+    <div class="strip" id="plateStrip"></div>
+  </div>
+  <button class="btn" id="plateNext">Готово</button>
+  <button class="link" id="plateSkip">Номер не виден — пропустить</button>
+</section>
 
-  <section id="complaint" hidden>
-    <h2>Текст жалобы</h2>
-    <p class="hint left">Проверьте и при необходимости исправьте текст, затем скопируйте его в форму обращения (Госуслуги, сайт ГИБДД).</p>
-    <textarea id="complaintText" spellcheck="true"></textarea>
-    <div class="actions">
-      <button id="complaintClose">Закрыть</button>
-      <button id="complaintCopy">Скопировать</button>
-    </div>
-  </section>
+<!-- ============ Summary ============ -->
+<section class="screen" id="scr-done" hidden>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Итог</span><span class="step"></span></div>
+  <div class="scroll">
+    <div class="card" id="summary"></div>
+    <p class="done-ok" id="savedNote"></p>
+  </div>
+  <button class="btn" id="saveBtn">Сохранить в Фото</button>
+  <button class="btn ghost" id="complaintBtn">📝 Текст жалобы</button>
+  <div class="btns" style="margin-top:10px">
+    <button class="btn gray" id="nextCarBtn">Следующее ТС</button>
+    <button class="btn gray" id="homeBtn">На главную</button>
+  </div>
+</section>
 
-  <div id="busy" hidden>Обработка…</div>
+<!-- ============ Settings ============ -->
+<section class="screen" id="scr-settings" hidden>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Настройки</span><span class="step"></span></div>
+  <div class="scroll">
+    <label class="switch">Координаты в градусах, минутах, секундах <input type="checkbox" id="optDms"></label>
+    <label class="switch">Точность и высота в подписи <input type="checkbox" id="optExtra"></label>
+    <label class="switch">Почтовый адрес с индексом и районом <input type="checkbox" id="optFull"></label>
+  </div>
+</section>
+
+<!-- ============ Photo viewer ============ -->
+<section class="screen" id="viewer" hidden>
+  <div class="bar"><button class="back" id="viewerClose">‹ Назад</button><span class="title" id="viewerTitle"></span>
+    <button class="back" id="viewerDelete" style="color:var(--danger);text-align:right">Удалить</button></div>
+  <img id="viewerImg" alt="Снимок с подписью">
+  <div class="vstrip" id="viewerStrip"></div>
+</section>
+
+<!-- ============ Complaint ============ -->
+<section class="screen" id="complaint" hidden>
+  <div class="bar"><button class="back" id="complaintClose">‹ Назад</button><span class="title">Текст жалобы</span><span class="step"></span></div>
+  <p class="sub">Проверьте текст и скопируйте его в форму обращения (Госуслуги, сайт ГИБДД).</p>
+  <textarea id="complaintText" spellcheck="true"></textarea>
+  <button class="btn" id="complaintCopy">Скопировать</button>
+</section>
+
+<div id="busy" hidden>Обработка…</div>
 
 <script>
 const $ = id => document.getElementById(id);
+
+// ---------- app-like behaviour: no page bounce, no pinch or double-tap zoom ----------
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1) { e.preventDefault(); return; }
+  const sc = e.target.closest('.scroll, .strip, .vstrip, textarea');
+  if (!sc || sc.scrollHeight <= sc.clientHeight && sc.scrollWidth <= sc.clientWidth) e.preventDefault();
+}, { passive: false });
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !e.target.closest('input, textarea')) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
+// After the camera or the keyboard closes, iOS leaves the view shifted; put it back.
+function resetScroll() {
+  const el = document.activeElement;
+  if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' && el.type === 'text')) return;
+  const fix = () => { window.scrollTo(0, 0); document.body.scrollTop = 0; };
+  fix(); setTimeout(fix, 100); setTimeout(fix, 400);
+}
+window.addEventListener('focus', resetScroll);
+window.addEventListener('pageshow', resetScroll);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) resetScroll(); });
+if (window.visualViewport) visualViewport.addEventListener('resize', resetScroll);
+document.addEventListener('focusout', () => setTimeout(resetScroll, 50));
 
 // ---------- settings ----------
 const S = (() => {
@@ -158,9 +241,9 @@ const S = (() => {
 function saveSettings() { try { localStorage.setItem('geofoto', JSON.stringify(S)); } catch {} }
 $('optDms').checked = S.dms;
 $('optExtra').checked = S.extra;
+$('optFull').checked = S.full;
 $('optDms').onchange = e => { S.dms = e.target.checked; saveSettings(); renderLive(); };
 $('optExtra').onchange = e => { S.extra = e.target.checked; saveSettings(); };
-$('optFull').checked = S.full;
 $('optFull').onchange = e => { S.full = e.target.checked; saveSettings(); renderAddr(); };
 
 // ---------- formatting ----------
@@ -193,7 +276,10 @@ function dist(lat1, lon1, lat2, lon2) {
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
+const plural = (n, one, few, many) => n % 10 === 1 && n % 100 !== 11 ? one
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many;
 const setStatus = t => { $('status').textContent = t; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // ---------- live panel ----------
 let fix = null;
@@ -202,26 +288,11 @@ function renderLive() {
   $('liveTime').textContent = `${fmtDate(now)} ${fmtTime(now)}`;
   if (fix) {
     const c = fix.coords;
-    $('liveCoords').textContent = fmtCoords(c.latitude, c.longitude);
-    $('liveAcc').textContent = `±${Math.round(c.accuracy)} м`;
+    $('liveCoords').textContent = `${fmtCoords(c.latitude, c.longitude)} ±${Math.round(c.accuracy)} м`;
   }
 }
 setInterval(renderLive, 1000);
 renderLive();
-
-// ---------- iOS viewport fix ----------
-// After the camera or the keyboard closes, iOS home-screen apps are left scrolled up a little.
-function resetScroll() {
-  const el = document.activeElement;
-  if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text'))) return;
-  window.scrollTo(0, 0);
-  setTimeout(() => window.scrollTo(0, 0), 100);
-  setTimeout(() => window.scrollTo(0, 0), 400);
-}
-window.addEventListener('focus', resetScroll);
-window.addEventListener('pageshow', resetScroll);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) resetScroll(); });
-if (window.visualViewport) visualViewport.addEventListener('resize', resetScroll);
 
 // ---------- compass ----------
 const DIRS = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
@@ -260,61 +331,6 @@ $('compassBtn').onclick = async () => {
     $('liveDir').textContent = 'ошибка: ' + e.message;
   }
 };
-
-// ---------- violation: plate, quick buttons, comment ----------
-const VIOLATIONS = [
-  { label: 'Парковка на тротуаре', act: 'припарковано на тротуаре' },
-  { label: 'На газоне', act: 'размещено на газоне (озеленённой территории)' },
-  { label: 'Под знаком «Остановка запрещена»', act: 'остановлено в зоне действия знака 3.27 «Остановка запрещена»' },
-  { label: 'На пешеходном переходе', act: 'остановлено на пешеходном переходе' },
-];
-const findViolation = text => VIOLATIONS.find(v => v.label === text.trim());
-
-// Russian plates use only letters that look Latin, so Latin input is converted to Cyrillic.
-const LAT2CYR = { A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х' };
-const upPlate = v => v.toUpperCase().replace(/[ABEKMHOPCTYX]/g, ch => LAT2CYR[ch]);
-function formatPlate(v) {
-  v = upPlate(v).trim();
-  const m = v.replace(/\s+/g, '').match(/^([АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
-  return m ? `${m[1]} ${m[2]}` : v;
-}
-
-function bindField(id, key) {
-  const input = $(id), clear = $(id + 'Clear');
-  try { input.value = localStorage.getItem(key) || ''; } catch {}
-  const sync = () => {
-    clear.hidden = !input.value;
-    try { localStorage.setItem(key, input.value); } catch {}
-    renderChips();
-  };
-  input.addEventListener('input', sync);
-  input.onkeydown = e => { if (e.key === 'Enter') input.blur(); };
-  input.addEventListener('blur', () => setTimeout(resetScroll, 50));
-  clear.onclick = () => { input.value = ''; sync(); input.focus(); };
-  return sync;
-}
-
-function renderChips() {
-  const cur = $('comment').value.trim();
-  for (const b of $('chips').children) b.classList.toggle('on', b.textContent === cur);
-}
-for (const v of VIOLATIONS) {
-  const b = document.createElement('button');
-  b.className = 'chip';
-  b.textContent = v.label;
-  b.onclick = () => { $('comment').value = $('comment').value.trim() === v.label ? '' : v.label; syncComment(); };
-  $('chips').appendChild(b);
-}
-
-const syncComment = bindField('comment', 'geofoto-comment');
-const syncPlate = bindField('plate', 'geofoto-plate');
-$('plate').addEventListener('input', () => {
-  const el = $('plate'), pos = el.selectionStart, up = upPlate(el.value);
-  if (up !== el.value) { el.value = up; el.setSelectionRange(pos, pos); syncPlate(); }
-});
-$('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); syncPlate(); });
-syncComment();
-syncPlate();
 
 // ---------- geolocation ----------
 let watchId = null, geoAskedAt = 0, geoTries = 0;
@@ -405,10 +421,11 @@ async function addressFor(lat, lon) {
   for (let i = 0; i < 2; i++) {
     try {
       await withTimeout(geocode(lat, lon), 6000);
-      if (addr.text && dist(lat, lon, addr.lat, addr.lon) < 50) return addrText();
+      if (addr.text && dist(lat, lon, addr.lat, addr.lon) < 50) break;
     } catch { break; }
   }
-  return addr.text && dist(lat, lon, addr.lat, addr.lon) < 150 ? addrText() : null;
+  const near = addr.text && dist(lat, lon, addr.lat, addr.lon) < 150;
+  return near ? { short: addr.text, full: addr.full } : null;
 }
 
 // ---------- drawing ----------
@@ -446,7 +463,7 @@ function stripLayout(w, info) {
   if (info.heading) add(`Направление съёмки: ${info.heading}`);
   add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
   if (info.plate) add(`Госномер: ${info.plate}`);
-  if (info.comment) add(`${findViolation(info.comment) ? 'Нарушение' : 'Комментарий'}: ${info.comment}`);
+  if (info.violation) add(`Нарушение: ${info.violation}`);
   const lineH = Math.round(fs * 1.35);
   return { fs, padding, lineH, lines, height: lines.length * lineH + padding * 2 };
 }
@@ -542,18 +559,122 @@ async function withExif(jpegBlob, date, coords) {
   return new Blob([new Uint8Array([0xFF, 0xD8]), ...makeExif(date, coords), rest], { type: 'image/jpeg' });
 }
 
-// ---------- capture flow ----------
-// A series is every photo taken since the result screen was opened from the home screen.
-// Photos are numbered "1 из N" only when saving, once N is known.
-let shots = [], current = -1, previewUrl = null, unsaved = false;
+// ---------- violations and plates ----------
+const VIOLATIONS = [
+  { ico: '🚶', label: 'Парковка на тротуаре', act: 'припарковано на тротуаре' },
+  { ico: '🌱', label: 'Парковка на газоне', act: 'припарковано на газоне (озеленённой территории)' },
+  { ico: '⛔', label: 'Парковка под знаком «Остановка запрещена»', act: 'припарковано в зоне действия знака 3.27 «Остановка запрещена»' },
+  { ico: '🦓', label: 'Парковка на пешеходном переходе', act: 'припарковано на пешеходном переходе' },
+];
 
+// Russian plates use only letters that look Latin, so Latin input is converted to Cyrillic.
+const LAT2CYR = { A: 'А', B: 'В', E: 'Е', K: 'К', M: 'М', H: 'Н', O: 'О', P: 'Р', C: 'С', T: 'Т', Y: 'У', X: 'Х' };
+const upPlate = v => v.toUpperCase().replace(/[ABEKMHOPCTYX]/g, ch => LAT2CYR[ch]);
+function formatPlate(v) {
+  v = upPlate(v).trim();
+  const m = v.replace(/\s+/g, '').match(/^([АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2})(\d{2,3})$/);
+  return m ? `${m[1]} ${m[2]}` : v;
+}
+
+// ---------- navigation ----------
+// C is the case being recorded: one vehicle, its violation, plate and photos.
+let C = null;
+const newCase = (quick, violation) => ({ quick, violation: violation || null, plate: '', shots: [], saved: false });
+const violationText = () => C && !C.quick ? (C.violation ? C.violation.label : C.other) : '';
+
+const BACK = {
+  type: () => go('home'),
+  photos: () => go(C.quick ? 'home' : 'type'),
+  plate: () => go('photos'),
+  done: () => go(C.quick ? 'photos' : 'plate'),
+  settings: () => go('home'),
+};
+let screen = 'home';
+function go(name) {
+  for (const s of ['home', 'type', 'photos', 'plate', 'done', 'settings']) $('scr-' + s).hidden = s !== name;
+  screen = name;
+  ({ home: renderHome, type: renderType, photos: renderPhotos, plate: renderPlate, done: renderDone }[name] || (() => {}))();
+  resetScroll();
+}
+document.querySelectorAll('[data-back]').forEach(b => { b.onclick = () => BACK[screen](); });
+$('toSettings').onclick = () => go('settings');
+
+const confirmDiscard = () => !C || !C.shots.length || C.saved ||
+  confirm(`Есть несохранённые снимки (${C.shots.length}). Удалить их и продолжить?`);
+
+// ---------- home ----------
+function renderHome() {
+  const open = C && C.shots.length && !C.saved;
+  $('resumeBtn').hidden = !open;
+  if (open) {
+    const n = C.shots.length;
+    $('resumeBtn').textContent = `↩ Продолжить: ${C.quick ? 'фото' : violationText() || 'нарушение'} · ${n} ${plural(n, 'снимок', 'снимка', 'снимков')}`;
+  }
+}
+$('resumeBtn').onclick = () => go(C.quick ? 'photos' : C.plate ? 'done' : 'photos');
+$('newCaseBtn').onclick = () => { if (confirmDiscard()) { C = newCase(false); go('type'); } };
+$('quickBtn').onclick = () => { if (confirmDiscard()) { C = newCase(true); go('photos'); } };
+
+// ---------- step 1: violation ----------
+for (const v of VIOLATIONS) {
+  const b = document.createElement('button');
+  b.className = 'opt';
+  b.innerHTML = `<span class="ico">${v.ico}</span><span>${esc(v.label)}</span>`;
+  b.onclick = () => { C.violation = v; C.other = ''; go('photos'); };
+  b.dataset.label = v.label;
+  $('typeList').appendChild(b);
+}
+{
+  const b = document.createElement('button');
+  b.className = 'opt';
+  b.id = 'otherOpt';
+  b.innerHTML = '<span class="ico">✏️</span><span>Другое…</span>';
+  b.onclick = () => { $('otherBox').hidden = false; $('otherText').focus(); };
+  $('typeList').appendChild(b);
+}
+const submitOther = () => {
+  const t = $('otherText').value.trim();
+  if (!t) { $('otherText').focus(); return; }
+  C.violation = null; C.other = t;
+  $('otherText').blur();
+  go('photos');
+};
+$('otherNext').onclick = submitOther;
+$('otherText').onkeydown = e => { if (e.key === 'Enter') submitOther(); };
+function renderType() {
+  for (const b of $('typeList').children) b.classList.toggle('on', !!C.violation && b.dataset.label === C.violation.label);
+  $('otherOpt').classList.toggle('on', !C.violation && !!C.other);
+  $('otherBox').hidden = !C.other;
+  $('otherText').value = C.other || '';
+}
+
+// ---------- step 2: photos ----------
 // The page is paused while the camera is open, so take the direction the phone faces when the shutter button is tapped.
 let shotHeading = null;
-const rememberHeading = () => { shotHeading = heading != null && Date.now() - headingAt < 5000 ? heading : null; };
-$('shootBtn').addEventListener('click', () => { rememberHeading(); shots = []; current = -1; });
+$('shootBtn').addEventListener('click', () => {
+  shotHeading = heading != null && Date.now() - headingAt < 5000 ? heading : null;
+});
 
-const plural = (n, one, few, many) => n % 10 === 1 && n % 100 !== 11 ? one
-  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many;
+function renderPhotos() {
+  const n = C.shots.length;
+  $('photosStep').textContent = C.quick ? '' : '2 из 3';
+  $('photosSub').textContent = C.quick
+    ? 'Снимки с датой, временем, координатами и адресом.'
+    : `${violationText()}. Снимите общий план, госномер и знак.`;
+  $('grid').innerHTML = '';
+  C.shots.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = 'thumb';
+    b.innerHTML = `<img src="${s.thumb}" alt=""><span>${i + 1}</span>`;
+    b.onclick = () => openViewer(i);
+    $('grid').appendChild(b);
+  });
+  $('gridEmpty').hidden = n > 0;
+  $('shootBtn').textContent = n ? '📷 Ещё снимок' : '📷 Сделать снимок';
+  $('photosNext').disabled = !n;
+  $('photosNext').textContent = C.quick ? 'Готово ›' : 'Далее ›';
+}
+$('photosNext').onclick = () => go(C.quick ? 'done' : 'plate');
 
 async function collectShot(file) {
   const now = Date.now();
@@ -561,20 +682,31 @@ async function collectShot(file) {
   let p = fix;
   if ('geolocation' in navigator && (!p || now - p.timestamp > 60000)) p = await freshFix().catch(() => fix);
   const c = p && p.coords;
-  const address = c ? await addressFor(c.latitude, c.longitude) : null;
-  const near = c && addr.full && dist(c.latitude, c.longitude, addr.lat, addr.lon) < 150;
-  return {
-    file, when, coords: c, address,
-    postal: near ? addr.full : address,
-    heading: shotHeading,
-    plate: formatPlate($('plate').value),
-    comment: $('comment').value.trim(),
-    rendered: null,
-  };
+  const a = c ? await addressFor(c.latitude, c.longitude) : null;
+  return { file, thumb: URL.createObjectURL(file), when, coords: c, addr: a, heading: shotHeading, rendered: null };
 }
 
+$('cam').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  resetScroll();
+  if (!file) return;
+  $('busy').hidden = false;
+  try {
+    C.shots.push(await collectShot(file));
+    C.saved = false;
+    renderPhotos();
+  } catch (err) {
+    alert('Ошибка обработки фото: ' + err.message);
+  } finally {
+    $('busy').hidden = true;
+  }
+});
+
+// Photos are numbered "1 из N" only when rendered for saving, once N is known.
 async function renderShot(s, i, n) {
-  const key = `${i}/${n}`;
+  const shotAddr = s.addr ? (S.full ? s.addr.full : s.addr.short) : null;
+  const key = [i, n, C.plate, violationText(), S.dms, S.extra, S.full].join('|');
   if (s.rendered && s.rendered.key === key) return s.rendered;
   const img = await loadImage(s.file);
   let w = img.naturalWidth, h = img.naturalHeight;
@@ -588,9 +720,9 @@ async function renderShot(s, i, n) {
     coords: c ? fmtCoords(c.latitude, c.longitude) : null,
     extra: c && S.extra ? fmtExtra(c) : null,
     heading: s.heading != null ? fmtHeading(s.heading) : null,
-    address: s.address,
-    plate: s.plate,
-    comment: s.comment,
+    address: shotAddr,
+    plate: C.plate,
+    violation: violationText(),
   });
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h + strip.height;
@@ -600,55 +732,113 @@ async function renderShot(s, i, n) {
   const jpeg = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
   canvas.width = canvas.height = 0;
   const stamp = `${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}_${fmtTime(when).replace(/:/g, '')}`;
-  s.rendered = {
-    key,
-    blob: await withExif(jpeg, when, c),
-    name: `GeoFoto_${stamp}${n > 1 ? `_${i}из${n}` : ''}.jpg`,
-  };
+  if (s.rendered) URL.revokeObjectURL(s.rendered.url);
+  const blob = await withExif(jpeg, when, c);
+  s.rendered = { key, blob, url: URL.createObjectURL(blob), name: `GeoFoto_${stamp}${n > 1 ? `_${i}из${n}` : ''}.jpg` };
   return s.rendered;
 }
 
-async function showShot(idx) {
-  current = idx;
-  const n = shots.length;
-  const r = await renderShot(shots[idx], idx + 1, n);
-  if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = URL.createObjectURL(r.blob);
-  $('preview').src = previewUrl;
-  $('seriesCount').textContent = n > 1 ? `${n} ${plural(n, 'снимок', 'снимка', 'снимков')} в серии` : '';
-  $('saveBtn').textContent = n > 1 ? `Сохранить (${n})` : 'Сохранить';
-  $('seriesHint').textContent = n > 1
-    ? `При сохранении снимки получат номера «1 из ${n}» … «${n} из ${n}».`
-    : 'Нужно ещё фото этого нарушения (номер, знак)? Нажмите «Ещё фото».';
-  $('result').hidden = false;
-  resetScroll();
+// ---------- photo viewer ----------
+let viewing = -1;
+function renderViewerStrip() {
+  $('viewerStrip').innerHTML = '';
+  $('viewerStrip').hidden = C.shots.length < 2;
+  C.shots.forEach((s, i) => {
+    const img = document.createElement('img');
+    img.src = s.thumb;
+    img.className = i === viewing ? 'on' : '';
+    img.onclick = () => openViewer(i);
+    $('viewerStrip').appendChild(img);
+  });
+  const cur = $('viewerStrip').children[viewing];
+  if (cur) cur.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
-
-$('cam').addEventListener('change', async e => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  resetScroll();
-  $('busy').hidden = false;
+async function openViewer(i) {
+  viewing = i;
+  $('viewerTitle').textContent = `Снимок ${i + 1} из ${C.shots.length}`;
+  $('viewer').hidden = false;
+  renderViewerStrip();
+  $('viewerImg').src = C.shots[i].thumb; // show the raw photo at once, then the version with the strip
   try {
-    shots.push(await collectShot(file));
-    unsaved = true;
-    await showShot(shots.length - 1);
+    const r = await renderShot(C.shots[i], i + 1, C.shots.length);
+    if (viewing === i) $('viewerImg').src = r.url;
   } catch (err) {
     alert('Ошибка обработки фото: ' + err.message);
-  } finally {
-    $('busy').hidden = true;
   }
+}
+$('viewerClose').onclick = () => { $('viewer').hidden = true; go(screen); };
+$('viewerDelete').onclick = () => {
+  if (!confirm(`Удалить снимок ${viewing + 1}?`)) return;
+  const [s] = C.shots.splice(viewing, 1);
+  URL.revokeObjectURL(s.thumb);
+  if (s.rendered) URL.revokeObjectURL(s.rendered.url);
+  C.saved = false;
+  if (C.shots.length) { openViewer(Math.min(viewing, C.shots.length - 1)); return; }
+  $('viewer').hidden = true;
+  go('photos');
+};
+// Swipe left/right on the photo to move through the series.
+{
+  let x0 = null;
+  $('viewerImg').addEventListener('touchstart', e => { x0 = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+  $('viewerImg').addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    x0 = null;
+    if (Math.abs(dx) < 50) return;
+    const next = viewing + (dx < 0 ? 1 : -1);
+    if (next >= 0 && next < C.shots.length) openViewer(next);
+  });
+}
+
+// ---------- step 3: plate ----------
+function renderPlate() {
+  $('plate').value = C.plate;
+  $('plateStrip').innerHTML = '';
+  C.shots.forEach((s, i) => {
+    const img = document.createElement('img');
+    img.src = s.thumb;
+    img.onclick = () => openViewer(i);
+    $('plateStrip').appendChild(img);
+  });
+}
+$('plate').addEventListener('input', () => {
+  const el = $('plate'), pos = el.selectionStart, up = upPlate(el.value);
+  if (up !== el.value) { el.value = up; el.setSelectionRange(pos, pos); }
 });
+$('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); });
+$('plate').onkeydown = e => { if (e.key === 'Enter') $('plateNext').click(); };
+$('plateNext').onclick = () => { C.plate = formatPlate($('plate').value); $('plate').blur(); go('done'); };
+$('plateSkip').onclick = () => { C.plate = ''; $('plate').blur(); go('done'); };
+
+// ---------- summary ----------
+function renderDone() {
+  const n = C.shots.length, s = C.shots[0];
+  const place = s && s.addr ? (S.full ? s.addr.full : s.addr.short) : s && s.coords ? fmtCoords(s.coords.latitude, s.coords.longitude) : '—';
+  const rows = [];
+  if (!C.quick) {
+    rows.push(['Нарушение', violationText()]);
+    rows.push(['Госномер', C.plate || 'не указан']);
+  }
+  if (s) rows.push(['Время', `${fmtDate(s.when)} ${fmtTime(s.when).slice(0, 5)}`]);
+  rows.push(['Адрес', place]);
+  rows.push(['Снимков', String(n)]);
+  $('summary').innerHTML = rows.map(([k, v]) =>
+    `<div class="row${k === 'Адрес' || k === 'Нарушение' ? ' col' : ''}"><span class="label">${k}</span><span class="val">${esc(v)}</span></div>`).join('');
+  $('saveBtn').textContent = n > 1 ? `Сохранить в Фото (${n})` : 'Сохранить в Фото';
+  $('savedNote').textContent = C.saved ? 'Сохранено ✓' : n > 1 ? `Снимки получат номера «1 из ${n}» … «${n} из ${n}».` : '';
+  $('complaintBtn').hidden = C.quick;
+  $('nextCarBtn').textContent = C.quick ? 'Новые фото' : 'Следующее ТС';
+}
 
 $('saveBtn').onclick = async () => {
-  const n = shots.length;
+  const n = C.shots.length;
   const files = [];
   $('busy').hidden = false;
   try {
     for (let i = 0; i < n; i++) {
       $('busy').textContent = n > 1 ? `Подготовка снимка ${i + 1} из ${n}…` : 'Подготовка…';
-      const r = await renderShot(shots[i], i + 1, n);
+      const r = await renderShot(C.shots[i], i + 1, n);
       files.push(new File([r.blob], r.name, { type: 'image/jpeg' }));
     }
   } catch (err) {
@@ -659,59 +849,51 @@ $('saveBtn').onclick = async () => {
     $('busy').textContent = 'Обработка…';
   }
   if (navigator.canShare && navigator.canShare({ files })) {
-    try { await navigator.share({ files }); unsaved = false; }
+    try { await navigator.share({ files }); C.saved = true; }
     catch (e) { if (e.name !== 'AbortError') alert(e.message); }
   } else {
     for (const f of files) {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(f); a.download = f.name; a.click();
     }
-    unsaved = false;
+    C.saved = true;
   }
+  renderDone();
 };
 
-$('againBtn').onclick = () => { rememberHeading(); $('cam').click(); };
-
-$('deleteBtn').onclick = async () => {
-  if (!confirm('Удалить этот снимок из серии?')) return;
-  shots.splice(current, 1);
-  if (!shots.length) { unsaved = false; $('result').hidden = true; resetScroll(); return; }
-  $('busy').hidden = false;
-  try { await showShot(Math.min(current, shots.length - 1)); } finally { $('busy').hidden = true; }
+// Same violation and place, new vehicle: keep the violation, clear photos and plate.
+$('nextCarBtn').onclick = () => {
+  if (!confirmDiscard()) return;
+  C = Object.assign(newCase(C.quick, C.violation), { other: C.other });
+  go('photos');
 };
-
-$('closeBtn').onclick = () => {
-  if (unsaved && !confirm('Снимки ещё не сохранены. Закрыть без сохранения?')) return;
-  shots = []; current = -1; unsaved = false;
-  $('result').hidden = true;
-  resetScroll();
+$('homeBtn').onclick = () => {
+  if (!confirmDiscard()) return;
+  C = null;
+  go('home');
 };
 
 // ---------- complaint text ----------
-function buildComplaint(list) {
-  const s = list[0], d = s.when;
-  const place = s.postal
-    ? `по адресу: ${s.postal}` + (s.coords ? ` (координаты ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)})` : '')
-    : s.coords ? `в точке с координатами ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : 'по адресу: [укажите адрес]';
-  const plate = (list.find(x => x.plate) || {}).plate;
-  const comment = (list.find(x => x.comment) || {}).comment || '';
-  const car = `транспортное средство с государственным регистрационным знаком ${plate || '[госномер]'}`;
-  const v = findViolation(comment);
-  const what = v ? `${car} ${v.act}.` : `${car}: ${comment || '[опишите нарушение]'}.`;
-  const n = list.length;
+function buildComplaint() {
+  const s = C.shots[0], d = s.when;
+  const coords = s.coords ? `${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : null;
+  const place = s.addr
+    ? `по адресу: ${s.addr.full || s.addr.short}` + (coords ? ` (координаты ${coords})` : '')
+    : coords ? `в точке с координатами ${coords}` : 'по адресу: [укажите адрес]';
+  const car = `транспортное средство с государственным регистрационным знаком ${C.plate || '[госномер]'}`;
+  const what = C.violation ? `${car} ${C.violation.act}.` : `${car}: ${C.other || '[опишите нарушение]'}.`;
+  const n = C.shots.length;
   return `${fmtDate(d)} в ${pad(d.getHours())}:${pad(d.getMinutes())} ${place} ${what}\n\n` +
     'Прошу провести проверку по данному факту и привлечь водителя (собственника) транспортного средства ' +
     'к административной ответственности.\n\n' +
     `Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются (${n} ${plural(n, 'снимок', 'снимка', 'снимков')}).`;
 }
-
 $('complaintBtn').onclick = () => {
-  $('complaintText').value = buildComplaint(shots);
+  $('complaintText').value = buildComplaint();
   $('complaintCopy').textContent = 'Скопировать';
   $('complaint').hidden = false;
 };
-
-$('complaintClose').onclick = () => { $('complaint').hidden = true; resetScroll(); };
+$('complaintClose').onclick = () => { $('complaintText').blur(); $('complaint').hidden = true; };
 $('complaintCopy').onclick = async () => {
   const t = $('complaintText');
   try {
@@ -719,8 +901,8 @@ $('complaintCopy').onclick = async () => {
   } catch {
     t.select();
     document.execCommand('copy');
-    t.blur();
   }
+  t.blur();
   $('complaintCopy').textContent = 'Скопировано ✓';
 };
 
@@ -733,6 +915,7 @@ if (BUILD.sha.indexOf('__') === 0) {
   $('build').textContent = `обновлено ${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())} · ${BUILD.sha}`;
 }
 
+go('home');
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
