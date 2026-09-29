@@ -110,6 +110,9 @@
   .shutter { width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,.25); padding: 0; }
   .shutter:active { background: #fff; transform: scale(.94); }
   .cam-thumb { width: 54px; height: 54px; border-radius: 10px; border: 2px solid #fff; background: #222 center/cover no-repeat; padding: 0; }
+  .cam-done { width: 54px; height: 54px; border-radius: 50%; border: 0; padding: 0; background: var(--accent); color: #fff;
+    font-size: 28px; font-weight: 700; line-height: 54px; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .cam-done:active { transform: scale(.92); }
   .cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
   .cam-flash.on { opacity: .8; transition: none; }
   .cam-err { position: absolute; left: 20px; right: 20px; top: 40%; color: #fff; text-align: center; }
@@ -254,7 +257,7 @@
   <div class="cam-bottom">
     <button class="cam-thumb" id="camThumb" aria-label="Последний снимок"></button>
     <button class="shutter" id="shutter" aria-label="Снять"></button>
-    <span class="cam-thumb" style="visibility:hidden"></span>
+    <button class="cam-done" id="camDone" aria-label="Готово">✓</button>
   </div>
   <div class="cam-flash" id="camFlash"></div>
 </section>
@@ -915,6 +918,7 @@ function renderCamInfo() {
   ].filter(Boolean).join('\n');
 }
 $('camClose').onclick = closeCamera;
+$('camDone').onclick = closeCamera;
 $('camThumb').onclick = () => { if (C.shots.length) openViewer(C.shots.length - 1); };
 $('shutter').onclick = async () => {
   const v = $('camVideo');
