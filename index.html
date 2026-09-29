@@ -52,7 +52,7 @@
   .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .status { color: var(--danger); font-size: 14px; margin: 10px 2px 0; }
 
-  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 16px;
+  .btn { display: flex; align-items: center; justify-content: center; text-align: center; gap: 8px; width: 100%; padding: 16px;
     border-radius: 16px; border: 0; background: var(--accent); color: #fff; font-size: 18px; font-weight: 600; }
   .btn:active, .opt:active { opacity: .75; }
   .btn:disabled { opacity: .35; }
@@ -89,6 +89,32 @@
   .strip img { height: 72px; border-radius: 8px; flex: none; }
 
   .edit { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 2px 0 0; text-align: left; }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); flex: none; }
+  .seg button { padding: 8px 12px; border: 0; background: none; font-size: 15px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  #camera { background: #000; padding: 0; }
+  #camVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .cam-top { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center;
+    padding: calc(var(--top) + 6px) 16px 8px; background: linear-gradient(rgba(0,0,0,.55), transparent); color: #fff; }
+  .cam-info { position: absolute; left: 12px; right: 12px; bottom: calc(max(12px, calc(var(--bottom) - 12px)) + 104px);
+    font: 12px/1.35 Menlo, "Courier New", monospace; color: #fff; text-shadow: 0 1px 2px #000; white-space: pre-line; }
+  .cam-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px max(12px, calc(var(--bottom) - 12px)); background: linear-gradient(transparent, rgba(0,0,0,.6)); }
+  .cam-top .back { border: 0; background: none; color: #fff; font-size: 17px; padding: 8px 8px 8px 0; }
+  .shutter { width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: rgba(255,255,255,.25); padding: 0; }
+  .shutter:active { background: #fff; transform: scale(.94); }
+  .cam-thumb { width: 54px; height: 54px; border-radius: 10px; border: 2px solid #fff; background: #222 center/cover no-repeat; padding: 0; }
+  .cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  .cam-flash.on { opacity: .8; transition: none; }
+  .cam-err { position: absolute; left: 20px; right: 20px; top: 40%; color: #fff; text-align: center; }
+  .crop-area { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .crop-wrap { position: relative; touch-action: none; line-height: 0; }
+  #cropImg { display: block; max-width: 100%; }
+  #cropRect { position: absolute; border: 3px solid #ffd84d; box-shadow: 0 0 0 9999px rgba(0,0,0,.45); pointer-events: none; }
+  #insetPrev { display: block; max-width: 100%; max-height: 90px; margin: 10px auto 0; border-radius: 6px; border: 2px solid #fff; }
+  .sub.ocr { margin: 8px 0 0; min-height: 0; }
+  .sub.ocr button { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 0 0 0 6px; }
   .done-ok { color: var(--ok); text-align: center; font-size: 14px; min-height: 20px; margin: 8px 0 0; }
   .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   label.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
@@ -115,6 +141,7 @@
       <div class="row"><span class="label">Время</span><span class="val" id="liveTime">—</span></div>
       <div class="row"><span class="label">Координаты</span><span class="val" id="liveCoords">Определяю…</span></div>
       <div class="row"><span class="label">Направление</span><span class="val" id="liveDir">—</span></div>
+      <div class="row"><span class="label">Часы телефона</span><span class="val" id="liveClock">сверяю…</span></div>
       <div class="row col"><span class="label">Адрес</span><span class="val clamp" id="liveAddr">—</span></div>
     </div>
     <p class="status" id="status"></p>
@@ -147,7 +174,7 @@
     <div class="grid" id="grid"></div>
     <p class="empty" id="gridEmpty">Пока нет снимков</p>
   </div>
-  <label class="btn" id="shootBtn" for="cam" style="margin-top:12px">📷 Сделать снимок</label>
+  <button class="btn" id="shootBtn" style="margin-top:12px">📷 Сделать снимок</button>
   <button class="btn gray" id="photosNext" disabled>Далее ›</button>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 </section>
@@ -161,6 +188,12 @@
     <input class="field" id="car" type="text" placeholder="Марка и модель, например Kia Rio" autocomplete="off"
       autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="60" style="margin-top:10px">
     <div class="sugg" id="carSugg"></div>
+    <button class="btn ghost" id="cropBtn" style="margin-top:12px">🔍 Выделить номер на снимке</button>
+    <p class="sub ocr" id="ocrNote"></p>
+    <div id="insetBox" hidden>
+      <img id="insetPrev" alt="Выделенный номер">
+      <label class="switch">Крупный номер в подписи снимков <input type="checkbox" id="optInset"></label>
+    </div>
     <p class="sub" style="margin-top:8px">Нажмите на снимок, чтобы рассмотреть номер и марку.</p>
     <div class="strip" id="plateStrip"></div>
   </div>
@@ -190,10 +223,37 @@
 <section class="screen" id="scr-settings" hidden>
   <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">Настройки</span><span class="step"></span></div>
   <div class="scroll">
+    <div class="switch">Камера
+      <div class="seg" id="camSeg"><button data-v="system">Системная</button><button data-v="app">Встроенная</button></div>
+    </div>
+    <p class="sub" style="margin:8px 0 0">Встроенная: снимки подряд без выхода из приложения, направление берётся точно в момент кадра. Системная: максимальное качество и режимы камеры iPhone.</p>
     <label class="switch">Координаты в градусах, минутах, секундах <input type="checkbox" id="optDms"></label>
     <label class="switch">Точность и высота в подписи <input type="checkbox" id="optExtra"></label>
     <label class="switch">Почтовый адрес с индексом и районом <input type="checkbox" id="optFull"></label>
   </div>
+</section>
+
+<!-- ============ In-app camera ============ -->
+<section class="screen" id="camera" hidden>
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div class="cam-top"><button class="back" id="camClose">‹ Готово</button><span id="camCount"></span></div>
+  <p class="cam-err" id="camErr" hidden></p>
+  <div class="cam-info" id="camInfo"></div>
+  <div class="cam-bottom">
+    <button class="cam-thumb" id="camThumb" aria-label="Последний снимок"></button>
+    <button class="shutter" id="shutter" aria-label="Снять"></button>
+    <span class="cam-thumb" style="visibility:hidden"></span>
+  </div>
+  <div class="cam-flash" id="camFlash"></div>
+</section>
+
+<!-- ============ Plate selection ============ -->
+<section class="screen" id="crop" hidden>
+  <div class="bar"><button class="back" id="cropClose">‹ Назад</button><span class="title">Выделите номер</span><span class="step"></span></div>
+  <p class="sub">Обведите номер пальцем: проведите от одного угла номера к противоположному.</p>
+  <div class="crop-area" id="cropArea"><div class="crop-wrap" id="cropWrap"><img id="cropImg" alt=""><div id="cropRect" hidden></div></div></div>
+  <div class="vstrip" id="cropStrip"></div>
+  <button class="btn" id="cropDone" disabled>Готово</button>
 </section>
 
 <!-- ============ Photo viewer ============ -->
@@ -276,7 +336,7 @@ document.addEventListener('focusout', () => setTimeout(resetScroll, 50));
 
 // ---------- settings ----------
 const S = (() => {
-  const def = { dms: false, extra: true, full: false };
+  const def = { dms: false, extra: true, full: false, camera: 'system' };
   try { return Object.assign(def, JSON.parse(localStorage.getItem('geofoto') || '{}')); }
   catch { return def; }
 })();
@@ -287,6 +347,9 @@ $('optFull').checked = S.full;
 $('optDms').onchange = e => { S.dms = e.target.checked; saveSettings(); renderLive(); };
 $('optExtra').onchange = e => { S.extra = e.target.checked; saveSettings(); };
 $('optFull').onchange = e => { S.full = e.target.checked; saveSettings(); renderAddr(); };
+const renderCamSeg = () => { for (const b of $('camSeg').children) b.classList.toggle('on', b.dataset.v === S.camera); };
+for (const b of $('camSeg').children) b.onclick = () => { S.camera = b.dataset.v; saveSettings(); renderCamSeg(); };
+renderCamSeg();
 
 // ---------- formatting ----------
 const pad = n => String(n).padStart(2, '0');
@@ -308,8 +371,8 @@ function fmtCoords(lat, lon) {
   return S.dms ? `${toDms(lat, 'N', 'S')} ${toDms(lon, 'E', 'W')}` : `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 }
 function fmtExtra(c) {
-  const parts = [`Точность: ±${Math.round(c.accuracy)} м`];
-  if (c.altitude != null) parts.push(`Высота: ${Math.round(c.altitude)} м`);
+  const parts = [`Точность: ±${Math.round(c.accuracy)}00a0м`]; // no-break spaces keep "152 м" on one line
+  if (c.altitude != null) parts.push(`Высота: ${Math.round(c.altitude)}00a0м`);
   return parts.join('   ');
 }
 function dist(lat1, lon1, lat2, lon2) {
@@ -332,9 +395,39 @@ function renderLive() {
     const c = fix.coords;
     $('liveCoords').textContent = `${fmtCoords(c.latitude, c.longitude)} ±${Math.round(c.accuracy)} м`;
   }
+  if (!$('camera').hidden) renderCamInfo();
 }
 setInterval(renderLive, 1000);
 renderLive();
+
+// ---------- internet time ----------
+// The Date header of our own site (GitHub Pages, NTP-synced servers) shows whether the phone clock is right.
+let clockOffset = null, clockSyncedAt = 0;
+async function syncClock() {
+  try {
+    const t0 = Date.now();
+    const r = await fetch(`${location.pathname}?clock=${t0}`, { method: 'HEAD', cache: 'no-store' });
+    const t1 = Date.now();
+    const d = Date.parse(r.headers.get('Date'));
+    if (isNaN(d)) return;
+    clockOffset = d + 500 - (t0 + t1) / 2; // the header has whole seconds
+    clockSyncedAt = t1;
+  } catch {}
+  renderClock();
+}
+const fmtSpan = ms => {
+  const s = Math.round(Math.abs(ms) / 1000);
+  return s < 60 ? `${s} с` : s < 3600 ? `${Math.floor(s / 60)} мин ${s % 60} с` : `${Math.floor(s / 3600)} ч ${Math.floor(s % 3600 / 60)} мин`;
+};
+function renderClock() {
+  $('liveClock').textContent = clockOffset == null ? 'не сверены (нет сети)'
+    : Math.abs(clockOffset) < 2000 ? 'точные ✓'
+    : clockOffset > 0 ? `отстают на ${fmtSpan(clockOffset)}` : `спешат на ${fmtSpan(clockOffset)}`;
+}
+const netTimeFor = when => clockOffset != null && Date.now() - clockSyncedAt < 30 * 60000 ? new Date(when.getTime() + clockOffset) : null;
+syncClock();
+setInterval(syncClock, 10 * 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - clockSyncedAt > 60000) syncClock(); });
 
 // ---------- compass ----------
 const DIRS = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
@@ -495,20 +588,30 @@ const MONO = 'Menlo, "Courier New", monospace';
 function stripLayout(w, info) {
   const fs = Math.max(12, Math.round(w * 0.017));
   const padding = Math.round(fs * 0.8);
+  const lineH = Math.round(fs * 1.35);
+  // optional enlarged plate on the right; the text wraps in the remaining width
+  let inset = null;
+  if (info.inset) {
+    let iw = Math.round(w * 0.3), ih = Math.round(iw * info.inset.height / info.inset.width);
+    const maxH = lineH * 6;
+    if (ih > maxH) { iw = Math.round(iw * maxH / ih); ih = maxH; }
+    inset = { canvas: info.inset, w: iw, h: ih };
+  }
   const ctx = document.createElement('canvas').getContext('2d');
   ctx.font = `${fs}px ${MONO}`;
-  const maxW = w - padding * 2;
+  const maxW = w - padding * 2 - (inset ? inset.w + padding : 0);
   const lines = [];
   const add = text => lines.push(...wrap(ctx, text, maxW, 3));
-  add((info.shot ? `${info.shot}   ` : '') + `Дата: ${info.date}   Время: ${info.time}`);
+  add((info.shot ? `${info.shot}   ` : '') + `Дата: ${info.date}   Время: ${info.time}` +
+    (info.net ? `   Время по интернету: ${info.net}` : ''));
   if (info.coords) add(`Координаты: ${info.coords}` + (info.extra ? `   ${info.extra}` : ''));
   if (info.heading) add(`Направление съёмки: ${info.heading}`);
   add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
   const car = [info.plate && `Госномер: ${info.plate}`, info.car && `ТС: ${info.car}`].filter(Boolean).join('   ');
   if (car) add(car);
   if (info.violation) add(`Нарушение: ${info.violation}`);
-  const lineH = Math.round(fs * 1.35);
-  return { fs, padding, lineH, lines, height: lines.length * lineH + padding * 2 };
+  const height = Math.max(lines.length * lineH, inset ? inset.h : 0) + padding * 2;
+  return { fs, padding, lineH, lines, height, inset, w };
 }
 
 function drawStrip(ctx, y0, w, L) {
@@ -518,8 +621,12 @@ function drawStrip(ctx, y0, w, L) {
   ctx.font = `${L.fs}px ${MONO}`;
   ctx.textBaseline = 'top';
   L.lines.forEach((t, i) => ctx.fillText(t, L.padding, y0 + L.padding + i * L.lineH + L.fs * 0.1));
+  if (L.inset) {
+    const x = w - L.padding - L.inset.w, y = y0 + L.padding, b = Math.max(2, Math.round(L.fs * 0.12));
+    ctx.fillRect(x - b, y - b, L.inset.w + 2 * b, L.inset.h + 2 * b);
+    ctx.drawImage(L.inset.canvas, x, y, L.inset.w, L.inset.h);
+  }
 }
-
 async function loadImage(file) {
   const url = URL.createObjectURL(file);
   try {
@@ -622,7 +729,7 @@ function formatPlate(v) {
 // ---------- navigation ----------
 // C is the case being recorded: one vehicle, its violation, plate and photos.
 let C = null;
-const newCase = (quick, violation) => ({ quick, violation: violation || null, plate: '', car: '', shots: [], saved: false });
+const newCase = (quick, violation) => ({ quick, violation: violation || null, plate: '', car: '', shots: [], saved: false, crop: null, inset: null });
 const violationText = () => C && !C.quick ? (C.violation ? C.violation.label : C.other) : '';
 
 const BACK = {
@@ -692,11 +799,14 @@ function renderType() {
 }
 
 // ---------- step 2: photos ----------
-// The page is paused while the camera is open, so take the direction the phone faces when the shutter button is tapped.
+// Direction is taken when the shutter is pressed: the page is paused while the system camera is open.
+const headingNow = () => heading != null && Date.now() - headingAt < 5000 ? heading : null;
 let shotHeading = null;
-$('shootBtn').addEventListener('click', () => {
-  shotHeading = heading != null && Date.now() - headingAt < 5000 ? heading : null;
-});
+$('shootBtn').onclick = () => {
+  shotHeading = headingNow();
+  if (S.camera === 'app') openCamera();
+  else $('cam').click();
+};
 
 function renderPhotos() {
   const n = C.shots.length;
@@ -717,39 +827,105 @@ function renderPhotos() {
   $('photosNext').disabled = !n;
   $('photosNext').textContent = C.quick ? 'Готово ›' : 'Далее ›';
 }
-$('photosNext').onclick = () => go(C.quick ? 'done' : 'plate');
+$('photosNext').onclick = async () => {
+  // addresses are looked up in the background; the summary needs them
+  $('busy').textContent = 'Определяю адрес…';
+  $('busy').hidden = false;
+  try { await withTimeout(Promise.all(C.shots.map(s => s.ready)), 15000).catch(() => {}); }
+  finally { $('busy').hidden = true; $('busy').textContent = 'Обработка…'; }
+  go(C.quick ? 'done' : 'plate');
+};
 
-async function collectShot(file) {
-  const now = Date.now();
-  const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
-  let p = fix;
-  if ('geolocation' in navigator && (!p || now - p.timestamp > 60000)) p = await freshFix().catch(() => fix);
-  const c = p && p.coords;
-  const a = c ? await addressFor(c.latitude, c.longitude) : null;
-  return { file, thumb: URL.createObjectURL(file), when, coords: c, addr: a, heading: shotHeading, rendered: null };
+// A shot is added at once; position and address are filled in the background (s.ready).
+function makeShot(file, when, headingVal) {
+  const fresh = fix && Date.now() - fix.timestamp < 60000;
+  const s = { file, thumb: URL.createObjectURL(file), when, coords: fresh ? fix.coords : null, addr: null,
+    heading: headingVal, net: netTimeFor(when), rendered: null };
+  s.ready = (async () => {
+    if (!s.coords && 'geolocation' in navigator) s.coords = (await freshFix().catch(() => fix) || {}).coords || null;
+    if (s.coords) s.addr = await addressFor(s.coords.latitude, s.coords.longitude);
+  })().catch(() => {});
+  return s;
 }
 
-$('cam').addEventListener('change', async e => {
+$('cam').addEventListener('change', e => {
   const file = e.target.files[0];
   e.target.value = '';
   resetScroll();
   if (!file) return;
-  $('busy').hidden = false;
-  try {
-    C.shots.push(await collectShot(file));
-    C.saved = false;
-    renderPhotos();
-  } catch (err) {
-    alert('Ошибка обработки фото: ' + err.message);
-  } finally {
-    $('busy').hidden = true;
-  }
+  const now = Date.now();
+  const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
+  C.shots.push(makeShot(file, when, shotHeading));
+  C.saved = false;
+  renderPhotos();
 });
+
+// ---------- in-app camera ----------
+let camStream = null;
+async function openCamera() {
+  $('camera').hidden = false;
+  $('camErr').hidden = true;
+  renderCamUI();
+  renderCamInfo();
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 4032 }, height: { ideal: 3024 } }, audio: false,
+    });
+    $('camVideo').srcObject = camStream;
+    await $('camVideo').play();
+  } catch (e) {
+    $('camErr').textContent = `Нет доступа к камере (${e.message}). Разрешите камеру: Настройки iPhone → Приложения → Safari → Камера, ` +
+      'или выберите системную камеру в настройках приложения.';
+    $('camErr').hidden = false;
+  }
+}
+function closeCamera() {
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = null;
+  $('camVideo').srcObject = null;
+  $('camera').hidden = true;
+  renderPhotos();
+  resetScroll();
+}
+function renderCamUI() {
+  const n = C.shots.length, last = C.shots[n - 1];
+  $('camCount').textContent = n ? `${n} ${plural(n, 'снимок', 'снимка', 'снимков')}` : '';
+  $('camThumb').style.backgroundImage = last ? `url("${last.thumb}")` : 'none';
+  $('camThumb').style.visibility = last ? 'visible' : 'hidden';
+}
+function renderCamInfo() {
+  const now = new Date(), c = fix && fix.coords, h = headingNow();
+  $('camInfo').textContent = [
+    `${fmtDate(now)} ${fmtTime(now)}`,
+    c ? `${fmtCoords(c.latitude, c.longitude)} ±${Math.round(c.accuracy)} м` : 'координаты определяются…',
+    h != null ? `Направление ${fmtHeading(h)}` : '',
+    addrText() || '',
+  ].filter(Boolean).join('\n');
+}
+$('camClose').onclick = closeCamera;
+$('camThumb').onclick = () => { if (C.shots.length) openViewer(C.shots.length - 1); };
+$('shutter').onclick = async () => {
+  const v = $('camVideo');
+  if (!v.videoWidth) return;
+  const when = new Date(), h = headingNow();
+  const c = document.createElement('canvas');
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext('2d').drawImage(v, 0, 0);
+  $('camFlash').classList.add('on');
+  requestAnimationFrame(() => requestAnimationFrame(() => $('camFlash').classList.remove('on')));
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.95));
+  c.width = c.height = 0;
+  C.shots.push(makeShot(new File([blob], 'camera.jpg', { type: 'image/jpeg', lastModified: when.getTime() }), when, h));
+  C.saved = false;
+  renderCamUI();
+};
 
 // Photos are numbered "1 из N" only when rendered for saving, once N is known.
 async function renderShot(s, i, n) {
+  await s.ready;
   const shotAddr = C.addr || (s.addr ? (S.full ? s.addr.full : s.addr.short) : null);
-  const key = [i, n, C.plate, C.car, C.addr, violationText(), S.dms, S.extra, S.full].join('|');
+  const inset = C.crop && C.inset ? C.crop : null;
+  const key = [i, n, C.plate, C.car, C.addr, violationText(), S.dms, S.extra, S.full, inset && inset.id].join('|');
   if (s.rendered && s.rendered.key === key) return s.rendered;
   const img = await loadImage(s.file);
   let w = img.naturalWidth, h = img.naturalHeight;
@@ -760,6 +936,7 @@ async function renderShot(s, i, n) {
     shot: n > 1 ? `Снимок ${i} из ${n}` : null,
     date: fmtDate(when),
     time: `${fmtTime(when)} (UTC${tzOffset(when)})`,
+    net: s.net ? fmtTime(s.net) : null,
     coords: c ? fmtCoords(c.latitude, c.longitude) : null,
     extra: c && S.extra ? fmtExtra(c) : null,
     heading: s.heading != null ? fmtHeading(s.heading) : null,
@@ -767,6 +944,7 @@ async function renderShot(s, i, n) {
     plate: C.plate,
     car: C.car,
     violation: violationText(),
+    inset: inset && inset.canvas,
   });
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h + strip.height;
@@ -986,12 +1164,181 @@ function renderPlate() {
     img.onclick = () => openViewer(i);
     $('plateStrip').appendChild(img);
   });
+  renderInset();
+  if (ocr.noteCase !== C) { $('ocrNote').textContent = ''; ocr.noteCase = C; } // keep the result when coming back to this step
+  autoRecognize();
 }
 $('plate').addEventListener('input', () => {
   const el = $('plate'), pos = el.selectionStart, up = upPlate(el.value);
   if (up !== el.value) { el.value = up; el.setSelectionRange(pos, pos); }
 });
-$('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); });
+$('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); C.plate = $('plate').value; });
+// Keep what is typed, so opening a photo or the plate selection and coming back does not lose it.
+$('plate').addEventListener('input', () => { C.plate = $('plate').value; if (ocr.filled && $('plate').value !== ocr.filled) ocr.filled = null; });
+$('car').addEventListener('input', () => { C.car = $('car').value; });
+
+// ---------- plate selection (enlarged inset) ----------
+let cropShot = 0, cropSel = null;
+function openCrop() {
+  cropShot = C.crop ? Math.max(0, C.shots.indexOf(C.crop.shot)) : C.shots.length - 1;
+  $('crop').hidden = false;
+  showCropShot(cropShot, C.crop && C.crop.shot === C.shots[cropShot] ? C.crop.rect : null);
+}
+function showCropShot(i, rect) {
+  cropShot = i;
+  cropSel = rect;
+  const img = $('cropImg');
+  img.style.maxHeight = $('cropArea').clientHeight + 'px';
+  img.src = C.shots[i].thumb;
+  img.onload = drawCropRect;
+  $('cropStrip').innerHTML = '';
+  $('cropStrip').hidden = C.shots.length < 2;
+  C.shots.forEach((s, k) => {
+    const t = document.createElement('img');
+    t.src = s.thumb;
+    t.className = k === i ? 'on' : '';
+    t.onclick = () => showCropShot(k, null);
+    $('cropStrip').appendChild(t);
+  });
+  drawCropRect();
+}
+function drawCropRect() {
+  const r = $('cropRect');
+  r.hidden = !cropSel;
+  $('cropDone').disabled = !cropSel || cropSel.w < 0.01 || cropSel.h < 0.005;
+  if (!cropSel) return;
+  Object.assign(r.style, { left: cropSel.x * 100 + '%', top: cropSel.y * 100 + '%', width: cropSel.w * 100 + '%', height: cropSel.h * 100 + '%' });
+}
+{
+  let start = null;
+  const pt = e => {
+    const b = $('cropImg').getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) };
+  };
+  const wrap = $('cropWrap');
+  wrap.addEventListener('pointerdown', e => { start = pt(e); wrap.setPointerCapture(e.pointerId); });
+  wrap.addEventListener('pointermove', e => {
+    if (!start) return;
+    const p = pt(e);
+    cropSel = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
+    drawCropRect();
+  });
+  wrap.addEventListener('pointerup', () => { start = null; });
+  wrap.addEventListener('pointercancel', () => { start = null; });
+}
+$('cropClose').onclick = () => { $('crop').hidden = true; };
+$('cropDone').onclick = async () => {
+  const s = C.shots[cropShot], img = await loadImage(s.file);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const sx = Math.round(cropSel.x * W), sy = Math.round(cropSel.y * H);
+  const sw = Math.max(1, Math.round(cropSel.w * W)), sh = Math.max(1, Math.round(cropSel.h * H));
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(4, 900 / sw); // enough pixels for a sharp inset and for recognition
+  canvas.width = Math.round(sw * scale); canvas.height = Math.round(sh * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  C.crop = { id: Date.now(), shot: s, rect: cropSel, canvas };
+  if (C.inset == null) C.inset = true;
+  C.saved = false;
+  $('crop').hidden = true;
+  renderInset();
+  recognizePlate([canvas], 'crop');
+};
+$('cropBtn').onclick = openCrop;
+function renderInset() {
+  const has = !!(C.crop && C.shots.includes(C.crop.shot));
+  if (!has) C.crop = null;
+  $('insetBox').hidden = !has;
+  $('cropBtn').textContent = has ? '🔍 Выделить номер заново' : '🔍 Выделить номер на снимке';
+  if (has) $('insetPrev').src = C.crop.canvas.toDataURL('image/jpeg', 0.85);
+  $('optInset').checked = has && C.inset !== false;
+}
+$('optInset').onchange = e => { C.inset = e.target.checked; C.saved = false; };
+
+// ---------- plate recognition (Tesseract OCR, runs on the phone; loaded on first use) ----------
+const ocr = { worker: null, filled: null, run: 0 };
+const loadScript = src => new Promise((res, rej) => {
+  const el = document.createElement('script');
+  el.src = src; el.onload = res; el.onerror = () => rej(new Error('не удалось загрузить модуль распознавания'));
+  document.head.appendChild(el);
+});
+async function ocrWorker() {
+  if (!ocr.worker) {
+    ocr.worker = (async () => {
+      if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+      const w = await Tesseract.createWorker('eng');
+      await w.setParameters({ tessedit_char_whitelist: 'ABEKMHOPCTYX0123456789' });
+      return w;
+    })();
+    ocr.worker.catch(() => { ocr.worker = null; });
+  }
+  return ocr.worker;
+}
+// Russian plate: letter, 3 digits, 2 letters, region of 2-3 digits. Fix look-alikes by position.
+function parsePlate(text) {
+  const s = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const toL = { 0: 'O', 8: 'B', 4: 'A', 7: 'T' }, toD = { O: '0', B: '8', A: '4', T: '7' };
+  for (const len of [9, 8]) {
+    for (let i = 0; i + len <= s.length; i++) {
+      const c = [...s.slice(i, i + len)].map((ch, k) => (k === 0 || k === 4 || k === 5) ? (toL[ch] || ch) : (toD[ch] || ch)).join('');
+      if (/^[ABEKMHOPCTYX]\d{3}[ABEKMHOPCTYX]{2}\d{2,3}$/.test(c)) return formatPlate(c);
+    }
+  }
+  return null;
+}
+// Prepare an image for OCR: grey, stretched contrast, limited size.
+function ocrCanvas(src, maxW) {
+  const k = Math.min(1, maxW / src.width);
+  const c = document.createElement('canvas');
+  c.width = Math.round(src.width * k); c.height = Math.round(src.height * k);
+  const ctx = c.getContext('2d');
+  ctx.filter = 'grayscale(1) contrast(1.6)';
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+async function recognizePlate(sources, mode) {
+  const run = ++ocr.run, caseRef = C;
+  const note = t => { if (run === ocr.run && C === caseRef) $('ocrNote').innerHTML = t; };
+  note(mode === 'crop' ? 'Распознаю номер…' : 'Ищу номер на снимках…');
+  try {
+    const w = await ocrWorker();
+    // crop: a single line; whole photo: automatic layout first, then scattered text
+    const modes = mode === 'crop' ? ['7', '6'] : ['3', '11'];
+    for (const src of sources) {
+      let found = null;
+      for (const psm of modes) {
+        await w.setParameters({ tessedit_pageseg_mode: psm });
+        const { data } = await w.recognize(ocrCanvas(src, mode === 'crop' ? 900 : 2200));
+        found = parsePlate(data.text);
+        if (found || run !== ocr.run) break;
+      }
+      if (run !== ocr.run || C !== caseRef) return;
+      if (found) {
+        const cur = $('plate').value.trim();
+        if (!cur || cur === ocr.filled || mode === 'crop' && formatPlate(cur) !== found) {
+          $('plate').value = found; C.plate = found; ocr.filled = found;
+          note(`Распознано: <b>${esc(found)}</b> — проверьте, распознавание может ошибаться.`);
+        } else if (formatPlate(cur) !== found) {
+          note(`Распознано: <b>${esc(found)}</b> <button id="ocrUse">подставить</button>`);
+          $('ocrUse').onclick = () => { $('plate').value = found; C.plate = found; ocr.filled = found; note(`Подставлено: <b>${esc(found)}</b>`); };
+        } else note('Номер совпадает с распознанным ✓');
+        return;
+      }
+    }
+    note(mode === 'crop' ? 'Номер не распознан — введите его вручную.' : 'Номер автоматически не найден. Выделите номер на снимке — так распознаётся точнее.');
+  } catch (e) {
+    note(`Распознавание недоступно: ${esc(e.message)}`);
+  }
+}
+async function autoRecognize() {
+  if (C.ocrTried || C.plate) return;
+  C.ocrTried = true;
+  const imgs = [];
+  for (const s of C.shots.slice(0, 3)) imgs.push(await loadImage(s.file));
+  recognizePlate(imgs, 'auto');
+}
+
 $('plate').onkeydown = e => { if (e.key === 'Enter') $('car').focus(); };
 const saveCar = () => {
   C.car = $('car').value.trim().replace(/\s+/g, ' ');
