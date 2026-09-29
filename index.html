@@ -176,7 +176,10 @@
     <p class="done-ok" id="savedNote"></p>
   </div>
   <button class="btn" id="saveBtn">Сохранить в Фото</button>
-  <button class="btn ghost" id="complaintBtn">📝 Текст жалобы</button>
+  <div class="btns" style="margin-top:10px" id="complaintRow">
+    <button class="btn ghost" id="complaintBtn">📝 Текст жалобы</button>
+    <button class="btn ghost" id="submitBtn">📤 Подать</button>
+  </div>
   <div class="btns" style="margin-top:10px">
     <button class="btn gray" id="nextCarBtn">Следующее ТС</button>
     <button class="btn gray" id="homeBtn">На главную</button>
@@ -210,6 +213,23 @@
   <div class="grow"></div>
   <button class="btn" id="addrSave">Сохранить</button>
   <button class="link" id="addrReset">Вернуть адрес с карты</button>
+</section>
+
+<!-- ============ Submit to Gosuslugi ============ -->
+<section class="screen" id="submit" hidden>
+  <div class="bar"><button class="back" id="submitClose">‹ Назад</button><span class="title">Подать жалобу</span><span class="step"></span></div>
+  <div class="scroll">
+    <p class="sub">Жалоба подаётся через «Госуслуги. Решаем вместе». Ответ обязаны дать в течение 30 дней.</p>
+    <div class="card">
+      <div class="row"><span class="val" style="text-align:left"><b>1.</b> Сохраните снимки в Фото</span><span class="val" id="subSaved"></span></div>
+      <div class="row"><span class="val" style="text-align:left"><b>2.</b> Нажмите кнопку ниже: текст жалобы скопируется, откроются Госуслуги</span></div>
+      <div class="row"><span class="val" style="text-align:left"><b>3.</b> Войдите, нажмите «Написать» и выберите тему про дороги / нарушение правил парковки</span></div>
+      <div class="row"><span class="val" style="text-align:left"><b>4.</b> В поле описания нажмите «Вставить», прикрепите снимки из галереи и отправьте</span></div>
+    </div>
+    <p class="done-ok" id="subNote"></p>
+  </div>
+  <button class="btn gray" id="subSave">Сохранить снимки в Фото</button>
+  <button class="btn" id="subGo">Скопировать текст и открыть Госуслуги</button>
 </section>
 
 <!-- ============ Complaint ============ -->
@@ -999,11 +1019,11 @@ function renderDone() {
   $('addrEditBtn').onclick = openAddrEdit;
   $('saveBtn').textContent = n > 1 ? `Сохранить в Фото (${n})` : 'Сохранить в Фото';
   $('savedNote').textContent = C.saved ? 'Сохранено ✓' : n > 1 ? `Снимки получат номера «1 из ${n}» … «${n} из ${n}».` : '';
-  $('complaintBtn').hidden = C.quick;
+  $('complaintRow').hidden = C.quick;
   $('nextCarBtn').textContent = C.quick ? 'Новые фото' : 'Следующее ТС';
 }
 
-$('saveBtn').onclick = async () => {
+async function saveAll() {
   const n = C.shots.length;
   const files = [];
   $('busy').hidden = false;
@@ -1031,7 +1051,9 @@ $('saveBtn').onclick = async () => {
     C.saved = true;
   }
   renderDone();
-};
+  renderSubmit();
+}
+$('saveBtn').onclick = saveAll;
 
 // ---------- manual address ----------
 const foundAddr = () => {
@@ -1083,22 +1105,50 @@ function buildComplaint() {
     'к административной ответственности.\n\n' +
     `Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются (${n} ${plural(n, 'снимок', 'снимка', 'снимков')}).`;
 }
+// Your edits to the text are kept while the case data they were made on stays the same.
+const complaintText = () => {
+  const base = buildComplaint();
+  return C.edited && C.edited.base === base ? C.edited.text : base;
+};
+function copyText(text) {
+  const fallback = () => {
+    const t = document.createElement('textarea');
+    t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(t); t.select(); t.setSelectionRange(0, text.length);
+    document.execCommand('copy'); t.remove();
+  };
+  try { return navigator.clipboard.writeText(text).catch(fallback); } catch { fallback(); return Promise.resolve(); }
+}
 $('complaintBtn').onclick = () => {
-  $('complaintText').value = buildComplaint();
+  $('complaintText').value = complaintText();
   $('complaintCopy').textContent = 'Скопировать';
   $('complaint').hidden = false;
 };
+$('complaintText').addEventListener('input', () => { C.edited = { base: buildComplaint(), text: $('complaintText').value }; });
 $('complaintClose').onclick = () => { $('complaintText').blur(); $('complaint').hidden = true; };
 $('complaintCopy').onclick = async () => {
-  const t = $('complaintText');
-  try {
-    await navigator.clipboard.writeText(t.value);
-  } catch {
-    t.select();
-    document.execCommand('copy');
-  }
-  t.blur();
+  await copyText($('complaintText').value);
+  $('complaintText').blur();
   $('complaintCopy').textContent = 'Скопировано ✓';
+};
+
+// ---------- submit via Gosuslugi "Решаем вместе" ----------
+// There is no way to prefill that form from outside, so the text goes via the clipboard.
+const POS_URL = 'https://www.gosuslugi.ru/help/obratitsya_v_pos';
+function renderSubmit() {
+  if (!C) return;
+  const n = C.shots.length;
+  $('subSaved').textContent = C.saved ? '✓' : '';
+  $('subSave').textContent = C.saved ? `Снимки сохранены ✓ (ещё раз)` : n > 1 ? `Сохранить снимки в Фото (${n})` : 'Сохранить снимок в Фото';
+}
+$('submitBtn').onclick = () => { $('subNote').textContent = ''; renderSubmit(); $('submit').hidden = false; };
+$('submitClose').onclick = () => { $('submit').hidden = true; };
+$('subSave').onclick = saveAll;
+$('subGo').onclick = () => {
+  copyText(complaintText());
+  $('subNote').textContent = 'Текст скопирован ✓ В форме нажмите в поле описания → «Вставить».';
+  const w = window.open(POS_URL, '_blank');
+  if (!w) location.href = POS_URL;
 };
 
 // ---------- build stamp (filled in by the GitHub Actions deploy) ----------
