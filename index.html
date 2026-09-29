@@ -24,7 +24,7 @@
     color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
     -webkit-text-size-adjust: 100%; touch-action: manipulation; }
   body { position: fixed; inset: 0; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  input, textarea { -webkit-user-select: text; user-select: text; font-size: 16px; } /* >= 16px: iOS does not zoom on focus */
+  input, textarea { -webkit-user-select: text; user-select: text; font-family: inherit; font-size: 16px; line-height: 1.4; } /* >= 16px: iOS does not zoom on focus */
   button { font: inherit; color: inherit; cursor: pointer; }
   [hidden] { display: none !important; }
 
@@ -88,6 +88,7 @@
   .strip { display: flex; gap: 6px; overflow-x: auto; margin: 12px 0; }
   .strip img { height: 72px; border-radius: 8px; flex: none; }
 
+  .edit { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 2px 0 0; text-align: left; }
   .done-ok { color: var(--ok); text-align: center; font-size: 14px; min-height: 20px; margin: 8px 0 0; }
   .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   label.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
@@ -198,6 +199,17 @@
     <button class="back" id="viewerDelete" style="color:var(--danger);text-align:right">Удалить</button></div>
   <img id="viewerImg" alt="Снимок с подписью">
   <div class="vstrip" id="viewerStrip"></div>
+</section>
+
+<!-- ============ Address edit ============ -->
+<section class="screen" id="addrEdit" hidden>
+  <div class="bar"><button class="back" id="addrClose">‹ Назад</button><span class="title">Адрес</span><span class="step"></span></div>
+  <p class="sub">Исправленный адрес будет на всех снимках этой серии и в тексте жалобы.</p>
+  <textarea id="addrText" class="field" rows="4" spellcheck="true" style="resize:none"></textarea>
+  <p class="sub" id="addrFound" style="margin-top:10px"></p>
+  <div class="grow"></div>
+  <button class="btn" id="addrSave">Сохранить</button>
+  <button class="link" id="addrReset">Вернуть адрес с карты</button>
 </section>
 
 <!-- ============ Complaint ============ -->
@@ -714,8 +726,8 @@ $('cam').addEventListener('change', async e => {
 
 // Photos are numbered "1 из N" only when rendered for saving, once N is known.
 async function renderShot(s, i, n) {
-  const shotAddr = s.addr ? (S.full ? s.addr.full : s.addr.short) : null;
-  const key = [i, n, C.plate, C.car, violationText(), S.dms, S.extra, S.full].join('|');
+  const shotAddr = C.addr || (s.addr ? (S.full ? s.addr.full : s.addr.short) : null);
+  const key = [i, n, C.plate, C.car, C.addr, violationText(), S.dms, S.extra, S.full].join('|');
   if (s.rendered && s.rendered.key === key) return s.rendered;
   const img = await loadImage(s.file);
   let w = img.naturalWidth, h = img.naturalHeight;
@@ -970,7 +982,7 @@ $('plateSkip').onclick = () => { C.plate = ''; saveCar(); go('done'); };
 // ---------- summary ----------
 function renderDone() {
   const n = C.shots.length, s = C.shots[0];
-  const place = s && s.addr ? (S.full ? s.addr.full : s.addr.short) : s && s.coords ? fmtCoords(s.coords.latitude, s.coords.longitude) : '—';
+  const place = C.addr || (s && s.addr ? (S.full ? s.addr.full : s.addr.short) : 'не определён');
   const rows = [];
   if (!C.quick) {
     rows.push(['Нарушение', violationText()]);
@@ -981,7 +993,10 @@ function renderDone() {
   rows.push(['Адрес', place]);
   rows.push(['Снимков', String(n)]);
   $('summary').innerHTML = rows.map(([k, v]) =>
-    `<div class="row${k === 'Адрес' || k === 'Нарушение' ? ' col' : ''}"><span class="label">${k}</span><span class="val">${esc(v)}</span></div>`).join('');
+    `<div class="row${k === 'Адрес' || k === 'Нарушение' ? ' col' : ''}"><span class="label">${k}` +
+    (k === 'Адрес' && C.addr ? ' <small>(исправлен вручную)</small>' : '') + `</span><span class="val">${esc(v)}</span>` +
+    (k === 'Адрес' ? '<button class="edit" id="addrEditBtn">✎ Изменить</button>' : '') + '</div>').join('');
+  $('addrEditBtn').onclick = openAddrEdit;
   $('saveBtn').textContent = n > 1 ? `Сохранить в Фото (${n})` : 'Сохранить в Фото';
   $('savedNote').textContent = C.saved ? 'Сохранено ✓' : n > 1 ? `Снимки получат номера «1 из ${n}» … «${n} из ${n}».` : '';
   $('complaintBtn').hidden = C.quick;
@@ -1018,10 +1033,32 @@ $('saveBtn').onclick = async () => {
   renderDone();
 };
 
+// ---------- manual address ----------
+const foundAddr = () => {
+  const a = C.shots[0] && C.shots[0].addr;
+  return a ? (S.full ? a.full : a.short) || '' : '';
+};
+const setAddr = v => { if (v !== (C.addr || '')) C.saved = false; C.addr = v; };
+function openAddrEdit() {
+  const found = foundAddr();
+  $('addrText').value = C.addr || found;
+  $('addrFound').textContent = found ? `По карте: ${found}` : 'По карте адрес не определился.';
+  $('addrReset').hidden = !C.addr;
+  $('addrEdit').hidden = false;
+}
+const closeAddrEdit = () => { $('addrText').blur(); $('addrEdit').hidden = true; renderDone(); };
+$('addrClose').onclick = closeAddrEdit;
+$('addrSave').onclick = () => {
+  const v = $('addrText').value.trim().replace(/\s+/g, ' ');
+  setAddr(v && v !== foundAddr() ? v : '');
+  closeAddrEdit();
+};
+$('addrReset').onclick = () => { setAddr(''); closeAddrEdit(); };
+
 // Same violation and place, new vehicle: keep the violation, clear photos and plate.
 $('nextCarBtn').onclick = () => {
   if (!confirmDiscard()) return;
-  C = Object.assign(newCase(C.quick, C.violation), { other: C.other });
+  C = Object.assign(newCase(C.quick, C.violation), { other: C.other, addr: C.addr });
   go('photos');
 };
 $('homeBtn').onclick = () => {
@@ -1034,8 +1071,9 @@ $('homeBtn').onclick = () => {
 function buildComplaint() {
   const s = C.shots[0], d = s.when;
   const coords = s.coords ? `${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : null;
-  const place = s.addr
-    ? `по адресу: ${s.addr.full || s.addr.short}` + (coords ? ` (координаты ${coords})` : '')
+  const where = C.addr || (s.addr && (s.addr.full || s.addr.short));
+  const place = where
+    ? `по адресу: ${where}` + (coords ? ` (координаты ${coords})` : '')
     : coords ? `в точке с координатами ${coords}` : 'по адресу: [укажите адрес]';
   const car = `транспортное средство${C.car ? ' ' + C.car : ''} с государственным регистрационным знаком ${C.plate || '[госномер]'}`;
   const what = C.violation ? `${car} ${C.violation.act}.` : `${car}: ${C.other || '[опишите нарушение]'}.`;
