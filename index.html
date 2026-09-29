@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ГеоФото">
+<meta name="theme-color" content="#0b0f14">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<title>ГеоФото</title>
+<style>
+  :root {
+    --bg: #0b0f14; --card: #151b23; --line: #232c37; --text: #e8edf2;
+    --muted: #8a97a6; --accent: #2f8cff; --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  body { min-height: 100dvh; padding: calc(env(safe-area-inset-top) + 12px) 16px
+    calc(env(safe-area-inset-bottom) + 16px); display: flex; flex-direction: column; }
+  h1 { font-size: 22px; margin: 4px 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 4px 14px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row .label { color: var(--muted); flex: none; }
+  .row .val { text-align: right; font-variant-numeric: tabular-nums; word-break: break-word; }
+  .row.addr { flex-direction: column; gap: 4px; }
+  .row.addr .val { text-align: left; }
+  .status { color: var(--danger); min-height: 1.4em; margin: 10px 2px; font-size: 14px; }
+  .geo-btn { width: 100%; padding: 13px; margin-bottom: 8px; border-radius: 14px; border: 1px solid var(--accent);
+    background: transparent; color: var(--accent); font-size: 16px; font-weight: 600; }
+  .geo-btn[hidden] { display: none; }
+  details { margin-top: 4px; color: var(--muted); font-size: 15px; }
+  details label { display: flex; align-items: center; gap: 10px; padding: 8px 0; color: var(--text); }
+  details input { width: 20px; height: 20px; }
+  .spacer { flex: 1; }
+  .shoot { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    padding: 18px; border-radius: 18px; background: var(--accent); color: #fff; font-size: 19px;
+    font-weight: 600; border: 0; cursor: pointer; }
+  .shoot:active { opacity: .8; }
+  #result { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column;
+    padding: calc(env(safe-area-inset-top) + 8px) 12px calc(env(safe-area-inset-bottom) + 12px); }
+  #result[hidden], #busy[hidden] { display: none; }
+  #preview { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
+  .actions { display: flex; gap: 10px; margin-top: 10px; }
+  .actions button { flex: 1; padding: 15px; border-radius: 14px; border: 0; font-size: 17px; font-weight: 600; }
+  #saveBtn { background: var(--accent); color: #fff; }
+  #againBtn { background: #2a323d; color: var(--text); }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; margin: 8px 0 0; }
+  #busy { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center;
+    justify-content: center; font-size: 18px; }
+</style>
+</head>
+<body>
+  <h1>ГеоФото</h1>
+
+  <section class="card">
+    <div class="row"><span class="label">Дата и время</span><span class="val" id="liveTime">—</span></div>
+    <div class="row"><span class="label">Координаты</span><span class="val" id="liveCoords">Определяю…</span></div>
+    <div class="row"><span class="label">Точность</span><span class="val" id="liveAcc">—</span></div>
+    <div class="row addr"><span class="label">Адрес</span><span class="val" id="liveAddr">—</span></div>
+  </section>
+  <p class="status" id="status"></p>
+  <button class="geo-btn" id="geoBtn" hidden>📍 Разрешить геолокацию</button>
+
+  <details>
+    <summary>Настройки</summary>
+    <label><input type="checkbox" id="optDms"> Координаты в градусах/минутах/секундах</label>
+    <label><input type="checkbox" id="optExtra"> Показывать точность и высоту на фото</label>
+  </details>
+
+  <div class="spacer"></div>
+  <label class="shoot" for="cam">📷 Сфотографировать</label>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+
+  <section id="result" hidden>
+    <img id="preview" alt="Фото с отметкой">
+    <div class="actions">
+      <button id="againBtn">Ещё фото</button>
+      <button id="saveBtn">Сохранить</button>
+    </div>
+    <p class="hint">Если кнопка не сработала: нажмите и удерживайте фото, затем «Сохранить в Фото».</p>
+  </section>
+
+  <div id="busy" hidden>Обработка…</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const FONT = 'system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif';
+
+// ---------- settings ----------
+const S = (() => {
+  const def = { dms: false, extra: true };
+  try { return Object.assign(def, JSON.parse(localStorage.getItem('geofoto') || '{}')); }
+  catch { return def; }
+})();
+function saveSettings() { try { localStorage.setItem('geofoto', JSON.stringify(S)); } catch {} }
+$('optDms').checked = S.dms;
+$('optExtra').checked = S.extra;
+$('optDms').onchange = e => { S.dms = e.target.checked; saveSettings(); renderLive(); };
+$('optExtra').onchange = e => { S.extra = e.target.checked; saveSettings(); };
+
+// ---------- formatting ----------
+const pad = n => String(n).padStart(2, '0');
+const fmtDate = d => `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+const fmtTime = d => `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+function tzOffset(d) {
+  const o = -d.getTimezoneOffset(), a = Math.abs(o);
+  return `${o >= 0 ? '+' : '-'}${pad(Math.floor(a / 60))}:${pad(a % 60)}`;
+}
+function toDms(v, pos, neg) {
+  const hemi = v >= 0 ? pos : neg;
+  v = Math.abs(v);
+  let d = Math.floor(v), m = Math.floor((v - d) * 60), s = Math.round(((v - d) * 60 - m) * 600) / 10;
+  if (s >= 60) { s = 0; m++; }
+  if (m >= 60) { m = 0; d++; }
+  return `${d}°${pad(m)}′${s.toFixed(1).padStart(4, '0')}″${hemi}`;
+}
+function fmtCoords(lat, lon) {
+  return S.dms ? `${toDms(lat, 'N', 'S')} ${toDms(lon, 'E', 'W')}` : `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+}
+function fmtExtra(c) {
+  const parts = [`точность ±${Math.round(c.accuracy)} м`];
+  if (c.altitude != null) parts.push(`высота ${Math.round(c.altitude)} м`);
+  return parts.join(' · ');
+}
+function dist(lat1, lon1, lat2, lon2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+const setStatus = t => { $('status').textContent = t; };
+
+// ---------- live panel ----------
+let fix = null;
+function renderLive() {
+  const now = new Date();
+  $('liveTime').textContent = `${fmtDate(now)} ${fmtTime(now)}`;
+  if (fix) {
+    const c = fix.coords;
+    $('liveCoords').textContent = fmtCoords(c.latitude, c.longitude);
+    $('liveAcc').textContent = `±${Math.round(c.accuracy)} м`;
+  }
+}
+setInterval(renderLive, 1000);
+renderLive();
+
+// ---------- geolocation ----------
+let watchId = null, geoAskedAt = 0, geoTries = 0;
+const SETTINGS_HINT = 'Включите доступ на iPhone: Настройки → Конфиденциальность и безопасность → Службы геолокации ' +
+  '(включены) → Сайты Safari → «При использовании»; и Настройки → Приложения → Safari → Геопозиция → «Спрашивать» или «Разрешить». ' +
+  'Затем закройте и откройте приложение заново.';
+function geoError(e) {
+  if (e.code !== 1) { setStatus('Не удалось определить местоположение: ' + e.message); return; }
+  $('geoBtn').hidden = false;
+  // A denial that arrives almost instantly means no prompt was shown: the browser/OS blocked it.
+  const instant = Date.now() - geoAskedAt < 500;
+  if (!geoTries) setStatus('Нет доступа к геолокации. Нажмите кнопку ниже, чтобы разрешить.');
+  else setStatus((instant
+    ? `Попытка ${geoTries}: браузер заблокировал запрос, не показав окно. `
+    : `Попытка ${geoTries}: доступ не разрешён. `) + SETTINGS_HINT);
+}
+function startGeo() {
+  if (!window.isSecureContext) {
+    setStatus('Геолокация работает только на сайте с адресом https://. Откройте приложение по ссылке GitHub Pages.');
+    return;
+  }
+  if (!('geolocation' in navigator)) { setStatus('Геолокация недоступна в этом браузере.'); return; }
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  geoAskedAt = Date.now();
+  watchId = navigator.geolocation.watchPosition(onFix, geoError, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+}
+$('geoBtn').onclick = () => { geoTries++; setStatus('Запрашиваю доступ…'); startGeo(); };
+function onFix(p) {
+  fix = p;
+  $('geoBtn').hidden = true;
+  setStatus('');
+  renderLive();
+  geocode(p.coords.latitude, p.coords.longitude).catch(() => {});
+}
+function freshFix() {
+  return new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej,
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }));
+}
+startGeo();
+
+// ---------- reverse geocoding (OpenStreetMap Nominatim, free) ----------
+let addr = { text: null, lat: 0, lon: 0 };
+let geoInflight = null, lastGeoAt = 0;
+
+function formatAddress(j) {
+  const a = j.address || {};
+  const street = [a.road || a.pedestrian || a.footway || a.path || a.square, a.house_number].filter(Boolean).join(', ');
+  const place = a.city || a.town || a.village || a.hamlet || a.municipality || a.county;
+  const parts = [street || a.suburb || a.neighbourhood, place, a.state, a.country].filter(Boolean);
+  return [...new Set(parts)].join(', ') || j.display_name || '';
+}
+
+function geocode(lat, lon) {
+  if (addr.text && dist(lat, lon, addr.lat, addr.lon) < 20) return Promise.resolve(addr.text);
+  if (geoInflight) return geoInflight;
+  const wait = Math.max(0, lastGeoAt + 1100 - Date.now()); // Nominatim limit: 1 request/sec
+  geoInflight = new Promise(r => setTimeout(r, wait)).then(async () => {
+    lastGeoAt = Date.now();
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=ru&lat=${lat}&lon=${lon}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const text = formatAddress(await r.json());
+    addr = { text, lat, lon };
+    $('liveAddr').textContent = text || '—';
+    return text;
+  }).finally(() => { geoInflight = null; });
+  return geoInflight;
+}
+
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+async function addressFor(lat, lon) {
+  for (let i = 0; i < 2; i++) {
+    try {
+      await withTimeout(geocode(lat, lon), 6000);
+      if (addr.text && dist(lat, lon, addr.lat, addr.lon) < 50) return addr.text;
+    } catch { break; }
+  }
+  return addr.text && dist(lat, lon, addr.lat, addr.lon) < 150 ? addr.text : null;
+}
+
+// ---------- drawing ----------
+function wrap(ctx, text, maxW, maxLines) {
+  const words = text.split(' '), lines = [];
+  let cur = '';
+  for (const w of words) {
+    const t = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(t).width <= maxW || !cur) cur = t;
+    else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    let last = lines[maxLines - 1];
+    while (last && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+    lines[maxLines - 1] = last + '…';
+  }
+  return lines;
+}
+
+function drawOverlay(ctx, w, h, info) {
+  const fs = Math.max(16, Math.min(w, h) * 0.034);
+  const padding = fs * 0.9;
+  const maxW = w - padding * 2;
+  const lines = [];
+  const add = (text, size, weight) => {
+    ctx.font = `${weight} ${size}px ${FONT}`;
+    for (const t of wrap(ctx, text, maxW, 3)) lines.push({ t, size, weight });
+  };
+  add(info.time, fs * 1.15, 700);
+  if (info.coords) add(info.coords, fs, 600);
+  if (info.extra) add(info.extra, fs * 0.8, 400);
+  add(info.address || (info.coords ? 'Адрес не определён' : 'Местоположение не определено'), fs, 400);
+
+  const textH = lines.reduce((s, l) => s + l.size * 1.3, 0);
+  const boxH = textH + padding * 2.5;
+  const g = ctx.createLinearGradient(0, h - boxH, 0, h);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.35, 'rgba(0,0,0,0.55)');
+  g.addColorStop(1, 'rgba(0,0,0,0.75)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, h - boxH, w, boxH);
+
+  ctx.fillStyle = '#fff';
+  ctx.textBaseline = 'alphabetic';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = fs * 0.2;
+  let y = h - padding - textH;
+  for (const l of lines) {
+    y += l.size * 1.3;
+    ctx.font = `${l.weight} ${l.size}px ${FONT}`;
+    ctx.fillText(l.t, padding, y - l.size * 0.3);
+  }
+  ctx.shadowBlur = 0;
+}
+
+async function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+// ---------- EXIF (so Photos shows the date and places the photo on the map) ----------
+function makeExif(date, coords) {
+  const ascii = s => [...s].map(c => c.charCodeAt(0)).concat(0);
+  const exifDate = `${date.getFullYear()}:${pad(date.getMonth() + 1)}:${pad(date.getDate())} ${fmtTime(date)}`;
+  const size = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8 };
+  const byteLen = e => size[e.type] * e.count;
+  const E = (tag, type, vals) => ({ tag, type, vals, count: type === 5 ? vals.length / 2 : vals.length });
+  const ratDms = v => {
+    v = Math.abs(v);
+    const d = Math.floor(v), m = Math.floor((v - d) * 60), s = Math.round(((v - d) * 60 - m) * 60 * 10000);
+    return [d, 1, m, 1, s, 10000];
+  };
+
+  const ifd0 = [E(0x0112, 3, [1]), E(0x0132, 2, ascii(exifDate)), E(0x8769, 4, [0])];
+  const exif = [E(0x9003, 2, ascii(exifDate)), E(0x9011, 2, ascii(tzOffset(date)))];
+  let gps = null;
+  if (coords) {
+    ifd0.push(E(0x8825, 4, [0]));
+    gps = [
+      E(0x0000, 1, [2, 3, 0, 0]),
+      E(0x0001, 2, ascii(coords.latitude >= 0 ? 'N' : 'S')),
+      E(0x0002, 5, ratDms(coords.latitude)),
+      E(0x0003, 2, ascii(coords.longitude >= 0 ? 'E' : 'W')),
+      E(0x0004, 5, ratDms(coords.longitude)),
+    ];
+    if (coords.altitude != null) {
+      gps.push(E(0x0005, 1, [coords.altitude < 0 ? 1 : 0]), E(0x0006, 5, [Math.round(Math.abs(coords.altitude) * 100), 100]));
+    }
+  }
+  const ifdSize = es => es.reduce((s, e) => { const n = byteLen(e); return s + (n > 4 ? n + (n & 1) : 0); }, 2 + es.length * 12 + 4);
+
+  const off0 = 8, offExif = off0 + ifdSize(ifd0), offGps = offExif + ifdSize(exif);
+  ifd0.find(e => e.tag === 0x8769).vals = [offExif];
+  if (gps) ifd0.find(e => e.tag === 0x8825).vals = [offGps];
+  const total = offGps + (gps ? ifdSize(gps) : 0);
+
+  const buf = new ArrayBuffer(total), dv = new DataView(buf);
+  dv.setUint16(0, 0x4D4D); dv.setUint16(2, 42); dv.setUint32(4, off0);
+  const writeIfd = (off, es) => {
+    dv.setUint16(off, es.length);
+    let data = off + 2 + es.length * 12 + 4;
+    es.forEach((e, i) => {
+      const p = off + 2 + i * 12, n = byteLen(e);
+      dv.setUint16(p, e.tag); dv.setUint16(p + 2, e.type); dv.setUint32(p + 4, e.count);
+      let t = p + 8;
+      if (n > 4) { dv.setUint32(p + 8, data); t = data; data += n + (n & 1); }
+      e.vals.forEach((v, k) => {
+        if (e.type <= 2) dv.setUint8(t + k, v);
+        else if (e.type === 3) dv.setUint16(t + k * 2, v);
+        else dv.setUint32(t + k * 4, v);
+      });
+    });
+    dv.setUint32(off + 2 + es.length * 12, 0);
+  };
+  writeIfd(off0, ifd0);
+  writeIfd(offExif, exif);
+  if (gps) writeIfd(offGps, gps);
+
+  const segLen = 2 + 6 + total;
+  const head = new Uint8Array([0xFF, 0xE1, segLen >> 8, segLen & 0xFF, 0x45, 0x78, 0x69, 0x66, 0, 0]);
+  return [head, new Uint8Array(buf)];
+}
+
+async function withExif(jpegBlob, date, coords) {
+  const b = new Uint8Array(await jpegBlob.arrayBuffer());
+  let rest = b.subarray(2);
+  if (b[2] === 0xFF && b[3] === 0xE0) rest = b.subarray(4 + ((b[4] << 8) | b[5])); // drop JFIF APP0
+  return new Blob([new Uint8Array([0xFF, 0xD8]), ...makeExif(date, coords), rest], { type: 'image/jpeg' });
+}
+
+// ---------- capture flow ----------
+let resultBlob = null, resultName = '', resultUrl = null;
+
+$('cam').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const now = Date.now();
+  const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
+  $('busy').hidden = false;
+  try {
+    let p = fix;
+    if ('geolocation' in navigator && (!p || now - p.timestamp > 60000)) p = await freshFix().catch(() => fix);
+    const c = p && p.coords;
+    const address = c ? await addressFor(c.latitude, c.longitude) : null;
+
+    const img = await loadImage(file);
+    let w = img.naturalWidth, h = img.naturalHeight;
+    const k = Math.min(1, Math.sqrt(16000000 / (w * h))); // iOS canvas size limit
+    w = Math.round(w * k); h = Math.round(h * k);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    drawOverlay(ctx, w, h, {
+      time: `${fmtDate(when)} ${fmtTime(when)} (UTC${tzOffset(when)})`,
+      coords: c ? fmtCoords(c.latitude, c.longitude) : null,
+      extra: c && S.extra ? fmtExtra(c) : null,
+      address,
+    });
+    const jpeg = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+    canvas.width = canvas.height = 0;
+
+    resultBlob = await withExif(jpeg, when, c);
+    resultName = `GeoFoto_${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}_${fmtTime(when).replace(/:/g, '')}.jpg`;
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
+    resultUrl = URL.createObjectURL(resultBlob);
+    $('preview').src = resultUrl;
+    $('result').hidden = false;
+  } catch (err) {
+    alert('Ошибка обработки фото: ' + err.message);
+  } finally {
+    $('busy').hidden = true;
+  }
+});
+
+$('saveBtn').onclick = async () => {
+  const f = new File([resultBlob], resultName, { type: 'image/jpeg' });
+  if (navigator.canShare && navigator.canShare({ files: [f] })) {
+    try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') alert(e.message); }
+  } else {
+    const a = document.createElement('a');
+    a.href = resultUrl; a.download = resultName; a.click();
+  }
+};
+$('againBtn').onclick = () => { $('result').hidden = true; $('cam').click(); };
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
