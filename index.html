@@ -115,6 +115,9 @@
   #insetPrev { display: block; max-width: 100%; max-height: 90px; margin: 10px auto 0; border-radius: 6px; border: 2px solid #fff; }
   .sub.ocr { margin: 8px 0 0; min-height: 0; }
   .sub.ocr button { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 0 0 0 6px; }
+  .sub.ocr .ocr-pick { margin: 8px 8px 0 0; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+    color: var(--text); font: 600 16px/1 Menlo, "Courier New", monospace; }
+  .sub.ocr .ocr-pick.on { border-color: var(--accent); color: var(--accent); }
   .done-ok { color: var(--ok); text-align: center; font-size: 14px; min-height: 20px; margin: 8px 0 0; }
   .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
   label.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
@@ -148,6 +151,7 @@
     <button class="btn ghost" id="geoBtn" hidden>📍 Разрешить геолокацию</button>
     <button class="btn ghost" id="compassBtn" hidden>🧭 Включить компас</button>
   </div>
+  <button class="btn ghost" id="updateBtn" hidden>⟳ Вышла новая версия — обновить</button>
   <button class="btn ghost" id="resumeBtn" hidden></button>
   <button class="btn" id="newCaseBtn">🚗 Новое нарушение</button>
   <button class="btn gray" id="quickBtn">📷 Просто фото с координатами</button>
@@ -230,6 +234,9 @@
     <label class="switch">Координаты в градусах, минутах, секундах <input type="checkbox" id="optDms"></label>
     <label class="switch">Точность и высота в подписи <input type="checkbox" id="optExtra"></label>
     <label class="switch">Почтовый адрес с индексом и районом <input type="checkbox" id="optFull"></label>
+    <div class="switch">Версия <span class="val" id="verText"></span></div>
+    <button class="btn ghost" id="checkUpd" style="margin-top:14px">⟳ Проверить обновления</button>
+    <p class="sub" id="updNote" style="margin-top:8px;text-align:center"></p>
   </div>
 </section>
 
@@ -371,8 +378,8 @@ function fmtCoords(lat, lon) {
   return S.dms ? `${toDms(lat, 'N', 'S')} ${toDms(lon, 'E', 'W')}` : `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 }
 function fmtExtra(c) {
-  const parts = [`Точность: ±${Math.round(c.accuracy)}00a0м`]; // no-break spaces keep "152 м" on one line
-  if (c.altitude != null) parts.push(`Высота: ${Math.round(c.altitude)}00a0м`);
+  const parts = [`Точность: ±${Math.round(c.accuracy)} м`]; // no-break spaces keep "152 м" on one line
+  if (c.altitude != null) parts.push(`Высота: ${Math.round(c.altitude)} м`);
   return parts.join('   ');
 }
 function dist(lat1, lon1, lat2, lon2) {
@@ -1276,16 +1283,25 @@ async function ocrWorker() {
   return ocr.worker;
 }
 // Russian plate: letter, 3 digits, 2 letters, region of 2-3 digits. Fix look-alikes by position.
-function parsePlate(text) {
-  const s = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+// Returns every plate found in the text: a photo can show several cars.
+function parsePlates(text) {
+  const out = [];
   const toL = { 0: 'O', 8: 'B', 4: 'A', 7: 'T' }, toD = { O: '0', B: '8', A: '4', T: '7' };
-  for (const len of [9, 8]) {
-    for (let i = 0; i + len <= s.length; i++) {
-      const c = [...s.slice(i, i + len)].map((ch, k) => (k === 0 || k === 4 || k === 5) ? (toL[ch] || ch) : (toD[ch] || ch)).join('');
-      if (/^[ABEKMHOPCTYX]\d{3}[ABEKMHOPCTYX]{2}\d{2,3}$/.test(c)) return formatPlate(c);
+  for (const line of text.toUpperCase().split('\n')) {
+    const s = line.replace(/[^A-Z0-9]/g, '');
+    for (let i = 0; i < s.length; i++) {
+      for (const len of [9, 8]) {
+        const c = [...s.slice(i, i + len)].map((ch, k) => (k === 0 || k === 4 || k === 5) ? (toL[ch] || ch) : (toD[ch] || ch)).join('');
+        if (c.length === len && /^[ABEKMHOPCTYX]\d{3}[ABEKMHOPCTYX]{2}\d{2,3}$/.test(c)) {
+          const p = formatPlate(c);
+          if (!out.includes(p)) out.push(p);
+          i += len - 1;
+          break;
+        }
+      }
     }
   }
-  return null;
+  return out;
 }
 // Prepare an image for OCR: grey, stretched contrast, limited size.
 function ocrCanvas(src, maxW) {
@@ -1299,39 +1315,52 @@ function ocrCanvas(src, maxW) {
 }
 async function recognizePlate(sources, mode) {
   const run = ++ocr.run, caseRef = C;
-  const note = t => { if (run === ocr.run && C === caseRef) $('ocrNote').innerHTML = t; };
+  const alive = () => run === ocr.run && C === caseRef;
+  const note = t => { if (alive()) $('ocrNote').innerHTML = t; };
+  const use = p => { $('plate').value = p; C.plate = p; ocr.filled = p; };
   note(mode === 'crop' ? 'Распознаю номер…' : 'Ищу номер на снимках…');
   try {
     const w = await ocrWorker();
     // crop: a single line; whole photo: automatic layout first, then scattered text
     const modes = mode === 'crop' ? ['7', '6'] : ['3', '11'];
+    const found = [];
     for (const src of sources) {
-      let found = null;
       for (const psm of modes) {
         await w.setParameters({ tessedit_pageseg_mode: psm });
         const { data } = await w.recognize(ocrCanvas(src, mode === 'crop' ? 900 : 2200));
-        found = parsePlate(data.text);
-        if (found || run !== ocr.run) break;
+        if (!alive()) return;
+        const got = parsePlates(data.text);
+        for (const p of got) if (!found.includes(p)) found.push(p);
+        if (got.length) break;
       }
-      if (run !== ocr.run || C !== caseRef) return;
-      if (found) {
-        const cur = $('plate').value.trim();
-        if (!cur || cur === ocr.filled || mode === 'crop' && formatPlate(cur) !== found) {
-          $('plate').value = found; C.plate = found; ocr.filled = found;
-          note(`Распознано: <b>${esc(found)}</b> — проверьте, распознавание может ошибаться.`);
-        } else if (formatPlate(cur) !== found) {
-          note(`Распознано: <b>${esc(found)}</b> <button id="ocrUse">подставить</button>`);
-          $('ocrUse').onclick = () => { $('plate').value = found; C.plate = found; ocr.filled = found; note(`Подставлено: <b>${esc(found)}</b>`); };
-        } else note('Номер совпадает с распознанным ✓');
-        return;
-      }
+      if (mode === 'crop' && found.length) break;
     }
-    note(mode === 'crop' ? 'Номер не распознан — введите его вручную.' : 'Номер автоматически не найден. Выделите номер на снимке — так распознаётся точнее.');
+    const cur = formatPlate($('plate').value);
+    if (!found.length) {
+      note(mode === 'crop' ? 'Номер не распознан — введите его вручную.' : 'Номер автоматически не найден. Выделите номер на снимке — так распознаётся точнее.');
+    } else if (found.length > 1 && mode !== 'crop') {
+      // several cars in the frame: let the user pick instead of guessing
+      if (ocr.filled && cur === ocr.filled) { $('plate').value = ''; C.plate = ''; ocr.filled = null; }
+      note('Найдено несколько номеров — выберите нужный:<br>' +
+        found.map(p => `<button class="ocr-pick${p === formatPlate($('plate').value) ? ' on' : ''}">${esc(p)}</button>`).join(''));
+      document.querySelectorAll('.ocr-pick').forEach(b => { b.onclick = () => {
+        use(b.textContent);
+        document.querySelectorAll('.ocr-pick').forEach(x => x.classList.toggle('on', x === b));
+      }; });
+    } else {
+      const p = found[0];
+      if (!cur || cur === ocr.filled || mode === 'crop' && cur !== p) {
+        use(p);
+        note(`Распознано: <b>${esc(p)}</b> — проверьте, распознавание может ошибаться.`);
+      } else if (cur !== p) {
+        note(`Распознано: <b>${esc(p)}</b> <button id="ocrUse">подставить</button>`);
+        $('ocrUse').onclick = () => { use(p); note(`Подставлено: <b>${esc(p)}</b>`); };
+      } else note('Номер совпадает с распознанным ✓');
+    }
   } catch (e) {
     note(`Распознавание недоступно: ${esc(e.message)}`);
   }
-}
-async function autoRecognize() {
+}async function autoRecognize() {
   if (C.ocrTried || C.plate) return;
   C.ocrTried = true;
   const imgs = [];
@@ -1510,8 +1539,45 @@ if (BUILD.sha.indexOf('__') === 0) {
   $('build').textContent = `обновлено ${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())} · ${BUILD.sha}`;
 }
 
+// ---------- updates ----------
+// A home-screen app on iOS is resumed from memory rather than reloaded, so it asks the server
+// for the current build on start and on every return to the app.
+$('verText').textContent = $('build').textContent.replace('обновлено ', '');
+async function latestSha() {
+  const r = await fetch(`${location.pathname}?update=${Date.now()}`, { cache: 'no-store' });
+  const m = (await r.text()).match(/sha: '([0-9a-f]{7,40})'/);
+  return m ? m[1] : null;
+}
+async function checkUpdate(manual) {
+  if (manual) $('updNote').textContent = 'Проверяю…';
+  try {
+    const sha = await latestSha();
+    const newer = !!sha && sha !== BUILD.sha;
+    $('updateBtn').hidden = !newer;
+    if (!manual) return;
+    if (newer) applyUpdate();
+    else $('updNote').textContent = sha ? 'У вас последняя версия ✓' : 'Не удалось определить версию на сервере';
+  } catch {
+    if (manual) $('updNote').textContent = 'Нет связи с сервером';
+  }
+}
+async function applyUpdate() {
+  if (C && C.shots.length && !C.saved && !confirm('Несохранённые снимки после обновления пропадут. Обновить?')) {
+    $('updNote').textContent = 'Есть новая версия — обновите после сохранения снимков';
+    return;
+  }
+  $('busy').textContent = 'Обновляю…';
+  $('busy').hidden = false;
+  try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch {}
+  location.replace(`${location.pathname}?u=${Date.now()}`); // a new URL bypasses any cached copy of the page
+}
+$('updateBtn').onclick = applyUpdate;
+$('checkUpd').onclick = () => checkUpdate(true);
+setTimeout(() => checkUpdate(false), 2000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
+
 go('home');
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 </script>
 </body>
 </html>
