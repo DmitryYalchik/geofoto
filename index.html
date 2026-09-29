@@ -50,15 +50,12 @@
   .chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
     color: var(--text); font-size: 14px; }
   .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .series { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; color: var(--muted); }
-  .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); }
-  .seg button { padding: 8px 12px; border: 0; background: none; color: var(--text); font-size: 15px; }
-  .seg button + button { border-left: 1px solid var(--line); }
-  .seg button.on { background: var(--accent); color: #fff; }
-  .series-info { margin: -2px 2px 10px; color: var(--muted); font-size: 14px; }
-  .series-info[hidden], .series-done[hidden], #complaint[hidden] { display: none; }
-  .series-info button { border: 0; background: none; color: var(--accent); font-size: 14px; padding: 0 0 0 6px; }
-  .series-done { color: #7fd48b; text-align: center; font-size: 14px; margin: 8px 0 0; }
+  #complaint[hidden] { display: none; }
+  .series-done { color: var(--muted); text-align: center; font-size: 13px; margin: 8px 0 0; }
+  .result-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--text); font-size: 15px; }
+  .result-top button { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 6px 0; }
+  #deleteBtn { color: var(--danger); }
+  .build { text-align: center; font-size: 10px; color: var(--muted); opacity: .45; margin: 8px 0 0; font-variant-numeric: tabular-nums; }
   .secondary { width: 100%; margin-top: 10px; padding: 13px; border-radius: 14px; border: 1px solid var(--accent);
     background: transparent; color: var(--accent); font-size: 16px; font-weight: 600; }
   #complaint { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 10;
@@ -109,7 +106,7 @@
 
   <div class="spacer"></div>
   <div class="comment">
-    <input id="plate" class="plate" type="text" placeholder="Госномер, например А123БВ 777" autocomplete="off"
+    <input id="plate" class="plate" type="text" placeholder="Госномер, например А123ВС 777" autocomplete="off"
       autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="14">
     <button id="plateClear" aria-label="Очистить госномер" hidden>✕</button>
   </div>
@@ -118,25 +115,23 @@
     <input id="comment" type="text" placeholder="Нарушение или комментарий" autocomplete="off" enterkeyhint="done" maxlength="200">
     <button id="commentClear" aria-label="Очистить комментарий" hidden>✕</button>
   </div>
-  <div class="series">
-    <span>Серия снимков</span>
-    <div class="seg" id="seriesSeg">
-      <button data-n="0">Нет</button><button data-n="2">2</button><button data-n="3">3</button><button data-n="4">4</button><button data-n="5">5</button>
-    </div>
-  </div>
-  <p class="series-info" id="seriesInfo" hidden><span id="seriesText"></span> <button id="seriesReset">начать заново</button></p>
   <label class="shoot" id="shootBtn" for="cam">📷 Сфотографировать</label>
+  <p class="build" id="build"></p>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
 
   <section id="result" hidden>
+    <div class="result-top">
+      <button id="closeBtn">✕ Закрыть</button>
+      <span id="seriesCount"></span>
+      <button id="deleteBtn">Удалить снимок</button>
+    </div>
     <img id="preview" alt="Фото с отметкой">
-    <p class="series-done" id="seriesDone" hidden></p>
+    <p class="series-done" id="seriesHint"></p>
     <button class="secondary" id="complaintBtn">📝 Текст жалобы</button>
     <div class="actions">
       <button id="againBtn">Ещё фото</button>
       <button id="saveBtn">Сохранить</button>
     </div>
-    <p class="hint">Если кнопка не сработала: нажмите и удерживайте фото, затем «Сохранить в Фото».</p>
   </section>
 
   <section id="complaint" hidden>
@@ -268,10 +263,10 @@ $('compassBtn').onclick = async () => {
 
 // ---------- violation: plate, quick buttons, comment ----------
 const VIOLATIONS = [
-  { label: 'Парковка на тротуаре', act: 'припарковано на тротуаре', law: 'п. 12.2 ПДД РФ' },
-  { label: 'На газоне', act: 'размещено на газоне (озеленённой территории)', law: 'правил благоустройства территории' },
-  { label: 'Под знаком «Остановка запрещена»', act: 'остановлено в зоне действия знака 3.27 «Остановка запрещена»', law: 'п. 1.3 ПДД РФ' },
-  { label: 'На пешеходном переходе', act: 'остановлено на пешеходном переходе', law: 'п. 12.4 ПДД РФ' },
+  { label: 'Парковка на тротуаре', act: 'припарковано на тротуаре' },
+  { label: 'На газоне', act: 'размещено на газоне (озеленённой территории)' },
+  { label: 'Под знаком «Остановка запрещена»', act: 'остановлено в зоне действия знака 3.27 «Остановка запрещена»' },
+  { label: 'На пешеходном переходе', act: 'остановлено на пешеходном переходе' },
 ];
 const findViolation = text => VIOLATIONS.find(v => v.label === text.trim());
 
@@ -320,22 +315,6 @@ $('plate').addEventListener('input', () => {
 $('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); syncPlate(); });
 syncComment();
 syncPlate();
-
-// ---------- series of shots ----------
-const series = (() => {
-  try { return Object.assign({ size: 0, n: 1 }, JSON.parse(localStorage.getItem('geofoto-series') || '{}')); }
-  catch { return { size: 0, n: 1 }; }
-})();
-function renderSeries() {
-  try { localStorage.setItem('geofoto-series', JSON.stringify(series)); } catch {}
-  for (const b of $('seriesSeg').children) b.classList.toggle('on', +b.dataset.n === series.size);
-  $('seriesInfo').hidden = !series.size;
-  $('seriesText').textContent = `Следующий: снимок ${series.n} из ${series.size}.`;
-  $('seriesReset').hidden = series.n === 1;
-}
-for (const b of $('seriesSeg').children) b.onclick = () => { series.size = +b.dataset.n; series.n = 1; renderSeries(); };
-$('seriesReset').onclick = () => { series.n = 1; renderSeries(); };
-renderSeries();
 
 // ---------- geolocation ----------
 let watchId = null, geoAskedAt = 0, geoTries = 0;
@@ -564,71 +543,97 @@ async function withExif(jpegBlob, date, coords) {
 }
 
 // ---------- capture flow ----------
-let resultBlob = null, resultName = '', resultUrl = null;
+// A series is every photo taken since the result screen was opened from the home screen.
+// Photos are numbered "1 из N" only when saving, once N is known.
+let shots = [], current = -1, previewUrl = null, unsaved = false;
 
 // The page is paused while the camera is open, so take the direction the phone faces when the shutter button is tapped.
 let shotHeading = null;
 const rememberHeading = () => { shotHeading = heading != null && Date.now() - headingAt < 5000 ? heading : null; };
-$('shootBtn').addEventListener('click', rememberHeading);
+$('shootBtn').addEventListener('click', () => { rememberHeading(); shots = []; current = -1; });
+
+const plural = (n, one, few, many) => n % 10 === 1 && n % 100 !== 11 ? one
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? few : many;
+
+async function collectShot(file) {
+  const now = Date.now();
+  const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
+  let p = fix;
+  if ('geolocation' in navigator && (!p || now - p.timestamp > 60000)) p = await freshFix().catch(() => fix);
+  const c = p && p.coords;
+  const address = c ? await addressFor(c.latitude, c.longitude) : null;
+  const near = c && addr.full && dist(c.latitude, c.longitude, addr.lat, addr.lon) < 150;
+  return {
+    file, when, coords: c, address,
+    postal: near ? addr.full : address,
+    heading: shotHeading,
+    plate: formatPlate($('plate').value),
+    comment: $('comment').value.trim(),
+    rendered: null,
+  };
+}
+
+async function renderShot(s, i, n) {
+  const key = `${i}/${n}`;
+  if (s.rendered && s.rendered.key === key) return s.rendered;
+  const img = await loadImage(s.file);
+  let w = img.naturalWidth, h = img.naturalHeight;
+  const k = Math.min(1, Math.sqrt(15000000 / (w * h))); // iOS canvas size limit, with room for the strip
+  w = Math.round(w * k); h = Math.round(h * k);
+  const c = s.coords, when = s.when;
+  const strip = stripLayout(w, {
+    shot: n > 1 ? `Снимок ${i} из ${n}` : null,
+    date: fmtDate(when),
+    time: `${fmtTime(when)} (UTC${tzOffset(when)})`,
+    coords: c ? fmtCoords(c.latitude, c.longitude) : null,
+    extra: c && S.extra ? fmtExtra(c) : null,
+    heading: s.heading != null ? fmtHeading(s.heading) : null,
+    address: s.address,
+    plate: s.plate,
+    comment: s.comment,
+  });
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h + strip.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  drawStrip(ctx, h, w, strip);
+  const jpeg = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+  canvas.width = canvas.height = 0;
+  const stamp = `${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}_${fmtTime(when).replace(/:/g, '')}`;
+  s.rendered = {
+    key,
+    blob: await withExif(jpeg, when, c),
+    name: `GeoFoto_${stamp}${n > 1 ? `_${i}из${n}` : ''}.jpg`,
+  };
+  return s.rendered;
+}
+
+async function showShot(idx) {
+  current = idx;
+  const n = shots.length;
+  const r = await renderShot(shots[idx], idx + 1, n);
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = URL.createObjectURL(r.blob);
+  $('preview').src = previewUrl;
+  $('seriesCount').textContent = n > 1 ? `${n} ${plural(n, 'снимок', 'снимка', 'снимков')} в серии` : '';
+  $('saveBtn').textContent = n > 1 ? `Сохранить (${n})` : 'Сохранить';
+  $('seriesHint').textContent = n > 1
+    ? `При сохранении снимки получат номера «1 из ${n}» … «${n} из ${n}».`
+    : 'Нужно ещё фото этого нарушения (номер, знак)? Нажмите «Ещё фото».';
+  $('result').hidden = false;
+  resetScroll();
+}
 
 $('cam').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
-  const now = Date.now();
-  const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
   resetScroll();
   $('busy').hidden = false;
   try {
-    let p = fix;
-    if ('geolocation' in navigator && (!p || now - p.timestamp > 60000)) p = await freshFix().catch(() => fix);
-    const c = p && p.coords;
-    const address = c ? await addressFor(c.latitude, c.longitude) : null;
-    const plate = formatPlate($('plate').value);
-    const comment = $('comment').value.trim();
-    const shot = series.size ? { n: series.n, size: series.size } : null;
-
-    const img = await loadImage(file);
-    let w = img.naturalWidth, h = img.naturalHeight;
-    const k = Math.min(1, Math.sqrt(15000000 / (w * h))); // iOS canvas size limit, with room for the strip
-    w = Math.round(w * k); h = Math.round(h * k);
-    const strip = stripLayout(w, {
-      shot: shot && `Снимок ${shot.n} из ${shot.size}`,
-      date: fmtDate(when),
-      time: `${fmtTime(when)} (UTC${tzOffset(when)})`,
-      coords: c ? fmtCoords(c.latitude, c.longitude) : null,
-      extra: c && S.extra ? fmtExtra(c) : null,
-      heading: shotHeading != null ? fmtHeading(shotHeading) : null,
-      address,
-      plate,
-      comment,
-    });
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h + strip.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    drawStrip(ctx, h, w, strip);
-    const jpeg = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
-    canvas.width = canvas.height = 0;
-
-    resultBlob = await withExif(jpeg, when, c);
-    resultName = `GeoFoto_${when.getFullYear()}${pad(when.getMonth() + 1)}${pad(when.getDate())}_${fmtTime(when).replace(/:/g, '')}.jpg`;
-    if (resultUrl) URL.revokeObjectURL(resultUrl);
-    resultUrl = URL.createObjectURL(resultBlob);
-    $('preview').src = resultUrl;
-
-    lastShot = { when, coords: c, address: addr.full && c && dist(c.latitude, c.longitude, addr.lat, addr.lon) < 150 ? addr.full : address,
-      plate, comment, photos: shot ? shot.n : 1 };
-    $('seriesDone').hidden = !shot;
-    if (shot) {
-      $('seriesDone').textContent = shot.n < shot.size
-        ? `Снимок ${shot.n} из ${shot.size}. Сохраните его и сделайте следующий.`
-        : `Серия из ${shot.size} снимков завершена ✓`;
-      series.n = shot.n < shot.size ? shot.n + 1 : 1;
-      renderSeries();
-    }
-    $('result').hidden = false;
-    resetScroll();
+    shots.push(await collectShot(file));
+    unsaved = true;
+    await showShot(shots.length - 1);
   } catch (err) {
     alert('Ошибка обработки фото: ' + err.message);
   } finally {
@@ -637,41 +642,75 @@ $('cam').addEventListener('change', async e => {
 });
 
 $('saveBtn').onclick = async () => {
-  const f = new File([resultBlob], resultName, { type: 'image/jpeg' });
-  if (navigator.canShare && navigator.canShare({ files: [f] })) {
-    try { await navigator.share({ files: [f] }); } catch (e) { if (e.name !== 'AbortError') alert(e.message); }
+  const n = shots.length;
+  const files = [];
+  $('busy').hidden = false;
+  try {
+    for (let i = 0; i < n; i++) {
+      $('busy').textContent = n > 1 ? `Подготовка снимка ${i + 1} из ${n}…` : 'Подготовка…';
+      const r = await renderShot(shots[i], i + 1, n);
+      files.push(new File([r.blob], r.name, { type: 'image/jpeg' }));
+    }
+  } catch (err) {
+    alert('Ошибка обработки фото: ' + err.message);
+    return;
+  } finally {
+    $('busy').hidden = true;
+    $('busy').textContent = 'Обработка…';
+  }
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files }); unsaved = false; }
+    catch (e) { if (e.name !== 'AbortError') alert(e.message); }
   } else {
-    const a = document.createElement('a');
-    a.href = resultUrl; a.download = resultName; a.click();
+    for (const f of files) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(f); a.download = f.name; a.click();
+    }
+    unsaved = false;
   }
 };
-$('againBtn').onclick = () => { $('result').hidden = true; rememberHeading(); $('cam').click(); };
+
+$('againBtn').onclick = () => { rememberHeading(); $('cam').click(); };
+
+$('deleteBtn').onclick = async () => {
+  if (!confirm('Удалить этот снимок из серии?')) return;
+  shots.splice(current, 1);
+  if (!shots.length) { unsaved = false; $('result').hidden = true; resetScroll(); return; }
+  $('busy').hidden = false;
+  try { await showShot(Math.min(current, shots.length - 1)); } finally { $('busy').hidden = true; }
+};
+
+$('closeBtn').onclick = () => {
+  if (unsaved && !confirm('Снимки ещё не сохранены. Закрыть без сохранения?')) return;
+  shots = []; current = -1; unsaved = false;
+  $('result').hidden = true;
+  resetScroll();
+};
 
 // ---------- complaint text ----------
-let lastShot = null;
-
-function buildComplaint(s) {
-  const d = s.when;
-  const place = s.address
-    ? `по адресу: ${s.address}` + (s.coords ? ` (координаты ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)})` : '')
+function buildComplaint(list) {
+  const s = list[0], d = s.when;
+  const place = s.postal
+    ? `по адресу: ${s.postal}` + (s.coords ? ` (координаты ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)})` : '')
     : s.coords ? `в точке с координатами ${s.coords.latitude.toFixed(6)}, ${s.coords.longitude.toFixed(6)}` : 'по адресу: [укажите адрес]';
-  const car = `транспортное средство с государственным регистрационным знаком ${s.plate || '[госномер]'}`;
-  const v = findViolation(s.comment || '');
-  const what = v
-    ? `${car} ${v.act}, что является нарушением ${v.law}.`
-    : `${car}: ${s.comment || '[опишите нарушение]'}.`;
-  const n = s.photos;
+  const plate = (list.find(x => x.plate) || {}).plate;
+  const comment = (list.find(x => x.comment) || {}).comment || '';
+  const car = `транспортное средство с государственным регистрационным знаком ${plate || '[госномер]'}`;
+  const v = findViolation(comment);
+  const what = v ? `${car} ${v.act}.` : `${car}: ${comment || '[опишите нарушение]'}.`;
+  const n = list.length;
   return `${fmtDate(d)} в ${pad(d.getHours())}:${pad(d.getMinutes())} ${place} ${what}\n\n` +
     'Прошу провести проверку по данному факту и привлечь водителя (собственника) транспортного средства ' +
     'к административной ответственности.\n\n' +
-    `Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются (${n} ${n === 1 ? 'снимок' : n < 5 ? 'снимка' : 'снимков'}).`;
+    `Фотоматериалы с указанием даты, времени и координат места съёмки прилагаются (${n} ${plural(n, 'снимок', 'снимка', 'снимков')}).`;
 }
 
 $('complaintBtn').onclick = () => {
-  $('complaintText').value = buildComplaint(lastShot);
+  $('complaintText').value = buildComplaint(shots);
   $('complaintCopy').textContent = 'Скопировать';
   $('complaint').hidden = false;
 };
+
 $('complaintClose').onclick = () => { $('complaint').hidden = true; resetScroll(); };
 $('complaintCopy').onclick = async () => {
   const t = $('complaintText');
@@ -684,6 +723,15 @@ $('complaintCopy').onclick = async () => {
   }
   $('complaintCopy').textContent = 'Скопировано ✓';
 };
+
+// ---------- build stamp (filled in by the GitHub Actions deploy) ----------
+const BUILD = { sha: '__BUILD_SHA__', date: '__BUILD_DATE__' };
+if (BUILD.sha.indexOf('__') === 0) {
+  $('build').textContent = 'локальная версия';
+} else {
+  const d = new Date(BUILD.date);
+  $('build').textContent = `обновлено ${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())} · ${BUILD.sha}`;
+}
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
