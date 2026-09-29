@@ -222,14 +222,16 @@
     <p class="sub">Жалоба подаётся через «Госуслуги. Решаем вместе». Ответ обязаны дать в течение 30 дней.</p>
     <div class="card">
       <div class="row"><span class="val" style="text-align:left"><b>1.</b> Сохраните снимки в Фото</span><span class="val" id="subSaved"></span></div>
-      <div class="row"><span class="val" style="text-align:left"><b>2.</b> Нажмите кнопку ниже: текст жалобы скопируется, откроются Госуслуги</span></div>
-      <div class="row"><span class="val" style="text-align:left"><b>3.</b> Войдите, нажмите «Написать» и выберите тему про дороги / нарушение правил парковки</span></div>
+      <div class="row"><span class="val" style="text-align:left"><b>2.</b> Нажмите кнопку ниже: текст жалобы скопируется и откроется приложение «Госуслуги. Решаем вместе» (если его нет — App Store)</span></div>
+      <div class="row"><span class="val" style="text-align:left"><b>3.</b> Нажмите «Написать» и выберите тему про дороги / нарушение правил парковки</span></div>
       <div class="row"><span class="val" style="text-align:left"><b>4.</b> В поле описания нажмите «Вставить», прикрепите снимки из галереи и отправьте</span></div>
     </div>
     <p class="done-ok" id="subNote"></p>
   </div>
   <button class="btn gray" id="subSave">Сохранить снимки в Фото</button>
-  <button class="btn" id="subGo">Скопировать текст и открыть Госуслуги</button>
+  <!-- Real links, not window.open: iOS hands a tapped universal link to the installed app. -->
+  <a class="btn" id="subGo" href="https://pos.gosuslugi.ru/help/obratitsya_v_pos" style="text-decoration:none">Скопировать текст и открыть «Решаем вместе»</a>
+  <a class="link" id="subWeb" href="https://www.gosuslugi.ru/help/obratitsya_v_pos" style="display:block;text-align:center;text-decoration:none">Подать на сайте Госуслуг</a>
 </section>
 
 <!-- ============ Complaint ============ -->
@@ -1134,7 +1136,8 @@ $('complaintCopy').onclick = async () => {
 
 // ---------- submit via Gosuslugi "Решаем вместе" ----------
 // There is no way to prefill that form from outside, so the text goes via the clipboard.
-const POS_URL = 'https://www.gosuslugi.ru/help/obratitsya_v_pos';
+// pos.gosuslugi.ru/help/obratitsya_v_pos is a universal link of the "Решаем вместе" app
+// (listed in its apple-app-site-association); without the app it redirects to the App Store.
 function renderSubmit() {
   if (!C) return;
   const n = C.shots.length;
@@ -1144,12 +1147,12 @@ function renderSubmit() {
 $('submitBtn').onclick = () => { $('subNote').textContent = ''; renderSubmit(); $('submit').hidden = false; };
 $('submitClose').onclick = () => { $('submit').hidden = true; };
 $('subSave').onclick = saveAll;
-$('subGo').onclick = () => {
+const copyForSubmit = () => {
   copyText(complaintText());
   $('subNote').textContent = 'Текст скопирован ✓ В форме нажмите в поле описания → «Вставить».';
-  const w = window.open(POS_URL, '_blank');
-  if (!w) location.href = POS_URL;
 };
+$('subGo').addEventListener('click', copyForSubmit);
+$('subWeb').addEventListener('click', copyForSubmit);
 
 // ---------- build stamp (filled in by the GitHub Actions deploy) ----------
 const BUILD = { sha: '__BUILD_SHA__', date: '__BUILD_DATE__' };
