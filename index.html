@@ -386,11 +386,14 @@ function fmtCoords(lat, lon) {
   return S.dms ? `${toDms(lat, 'N', 'S')} ${toDms(lon, 'E', 'W')}` : `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 }
 function fmtExtra(c) {
-  const parts = [`Точность: ±${Math.round(c.accuracy)} м`]; // no-break spaces keep "152 м" on one line
-  if (c.altitude != null) parts.push(`Высота: ${Math.round(c.altitude)} м`);
+  const parts = [field('Точность', `±${Math.round(c.accuracy)} м`)];
+  if (c.altitude != null) parts.push(field('Высота', `${Math.round(c.altitude)} м`));
   return parts.join('   ');
 }
-function dist(lat1, lon1, lat2, lon2) {
+// Caption field "Label: value" with no-break spaces, so the caption never splits a label from its value.
+// Long values (address, violation) may wrap inside, but their first word stays with the label.
+const nbsp = t => String(t).replace(/ /g, ' ');
+const field = (label, value, long = false) => `${nbsp(label)}: ${long ? value : nbsp(value)}`;function dist(lat1, lon1, lat2, lon2) {
   const R = 6371000, r = Math.PI / 180;
   const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
@@ -537,10 +540,10 @@ function formatAddress(j) {
 // Postal format used in official complaints: "125009, г. Москва, Тверской район, Театральная площадь, д. 1"
 function formatAddressFull(j) {
   const a = j.address || {};
-  const place = a.city ? 'г. ' + a.city : a.town || a.village || a.hamlet || a.municipality;
+  const place = a.city ? 'г. ' + a.city : a.town || a.village || a.hamlet || a.municipality;
   const district = a.city_district || a.suburb || a.county;
   const road = a.road || a.pedestrian || a.footway || a.path || a.square;
-  const parts = [a.postcode, a.city ? null : a.state, place, district, road, a.house_number && 'д. ' + a.house_number];
+  const parts = [a.postcode, a.city ? null : a.state, place, district, road, a.house_number && 'д. ' + a.house_number];
   return [...new Set(parts.filter(Boolean))].join(', ') || formatAddress(j);
 }
 
@@ -580,12 +583,13 @@ async function addressFor(lat, lon) {
 
 // ---------- drawing ----------
 function wrap(ctx, text, maxW, maxLines) {
-  const words = text.split(' '), lines = [];
+  // breaks only at ordinary spaces; no-break spaces keep a label with its value
+  const parts = text.split(/( +)/), lines = [];
   let cur = '';
-  for (const w of words) {
-    const t = cur ? cur + ' ' + w : w;
+  for (let i = 0; i < parts.length; i += 2) {
+    const word = parts[i], t = cur ? cur + parts[i - 1] + word : word;
     if (ctx.measureText(t).width <= maxW || !cur) cur = t;
-    else { lines.push(cur); cur = w; }
+    else { lines.push(cur); cur = word; }
   }
   if (cur) lines.push(cur);
   if (lines.length > maxLines) {
@@ -596,7 +600,6 @@ function wrap(ctx, text, maxW, maxLines) {
   }
   return lines;
 }
-
 // Black info strip under the photo, in the style of traffic-camera fine photos.
 const MONO = 'Menlo, "Courier New", monospace';
 
@@ -617,14 +620,15 @@ function stripLayout(w, info) {
   const maxW = w - padding * 2 - (inset ? inset.w + padding : 0);
   const lines = [];
   const add = text => lines.push(...wrap(ctx, text, maxW, 3));
-  add((info.shot ? `${info.shot}   ` : '') + `Дата: ${info.date}   Время: ${info.time}` +
-    (info.net ? `   Время по интернету: ${info.net}` : ''));
-  if (info.coords) add(`Координаты: ${info.coords}` + (info.extra ? `   ${info.extra}` : ''));
-  if (info.heading) add(`Направление съёмки: ${info.heading}`);
-  add('Адрес: ' + (info.address || (info.coords ? 'не определён' : 'местоположение не определено')));
-  const car = [info.plate && `Госномер: ${info.plate}`, info.car && `ТС: ${info.car}`].filter(Boolean).join('   ');
+  const join = (...f) => f.filter(Boolean).join('   ');
+  add(join(info.shot && nbsp(info.shot), field('Дата', info.date), field('Время', info.time),
+    info.net && field('Время по интернету', info.net)));
+  if (info.coords) add(join(field('Координаты', info.coords), info.extra));
+  if (info.heading) add(field('Направление съёмки', info.heading));
+  add(field('Адрес', info.address || (info.coords ? 'не определён' : 'местоположение не определено'), true));
+  const car = join(info.plate && field('Госномер', info.plate), info.car && field('ТС', info.car));
   if (car) add(car);
-  if (info.violation) add(`Нарушение: ${info.violation}`);
+  if (info.violation) add(field('Нарушение', info.violation, true));
   const height = Math.max(lines.length * lineH, inset ? inset.h : 0) + padding * 2;
   return { fs, padding, lineH, lines, height, inset, w };
 }
