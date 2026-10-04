@@ -690,7 +690,7 @@ function stripLayout(w, info) {
   const add = text => lines.push(...wrap(ctx, text, maxW, 3));
   const join = (...f) => f.filter(Boolean).join('   ');
   add(join(info.shot && nbsp(info.shot), field('Дата', info.date), field('Время', info.time),
-    info.net && field('Время по интернету', info.net)));
+    info.net && field('Контрольное время', info.net)));
   if (info.coords) add(join(field('Координаты', info.coords), info.extra));
   if (info.heading) add(field('Направление съёмки', info.heading));
   add(field('Адрес', info.address || (info.coords ? 'не определён' : 'местоположение не определено'), true));
