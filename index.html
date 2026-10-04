@@ -120,6 +120,11 @@
   .crop-area { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
   .crop-wrap { position: relative; touch-action: none; line-height: 0; overflow: hidden; } /* keeps the dimming inside the photo */
   #cropImg { display: block; max-width: 100%; }
+  .guide { position: absolute; pointer-events: none; }
+  .guide.h { left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,.75); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+  .guide.v { top: 0; bottom: 0; border-left: 1px dashed rgba(255,255,255,.75); box-shadow: 1px 0 0 rgba(0,0,0,.35); }
+  .cdot { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #ffd84d;
+    border: 2px solid #000; pointer-events: none; }
   #cropRect { position: absolute; border: 3px solid #ffd84d; box-shadow: 0 0 0 9999px rgba(0,0,0,.45); pointer-events: none; }
   .crop-prev { height: 84px; flex: none; display: flex; align-items: center; justify-content: center; background: #000;
     border-radius: 12px; border: 1px solid var(--line); overflow: hidden; position: relative; }
@@ -295,7 +300,10 @@
     <button class="back" id="cropClear" style="text-align:right;color:var(--danger)">Убрать</button></div>
   <div class="crop-prev"><canvas id="cropPrev" width="600" height="150"></canvas><span id="cropPrevHint">Здесь будет увеличенный номер</span></div>
   <p class="sub" id="cropHint" style="margin:8px 0">Обведите номер: проведите пальцем от угла к углу. Рамку можно поправить, потянув за угол.</p>
-  <div class="crop-area" id="cropArea"><div class="crop-wrap" id="cropWrap"><img id="cropImg" alt=""><div id="cropRect" hidden></div></div></div>
+  <div class="crop-area" id="cropArea"><div class="crop-wrap" id="cropWrap"><img id="cropImg" alt=""><div id="cropRect" hidden></div>
+    <div class="guide h" id="g1h" hidden></div><div class="guide v" id="g1v" hidden></div>
+    <div class="guide h" id="g2h" hidden></div><div class="guide v" id="g2v" hidden></div>
+    <div class="cdot" id="cDot" hidden></div></div></div>
   <div class="vstrip" id="cropStrip"></div>
   <button class="btn" id="cropDone" style="margin-top:10px">Готово</button>
   <canvas id="loupe" width="260" height="260" hidden></canvas>
@@ -1314,6 +1322,9 @@ function showCropShot(i) {
   cropShot = i;
   const s = C.shots[i];
   cropSel = s.crop ? { ...s.crop.rect } : null;
+  cropP1 = null;
+  drawGuides(null, null);
+  cropHint();
   $('cropTitle').textContent = C.shots.length > 1 ? `Снимок ${i + 1} из ${C.shots.length}` : 'Номер на снимке';
   renderCropStrip(); // the strip must be in place before the free height for the photo is measured
   const img = $('cropImg');
@@ -1337,7 +1348,6 @@ function renderCropStrip() {
 function drawCropRect() {
   const r = $('cropRect');
   r.hidden = !cropSel;
-  $('cropClear').style.visibility = cropSel ? 'visible' : 'hidden';
   if (!cropSel) return;
   Object.assign(r.style, { left: cropSel.x * 100 + '%', top: cropSel.y * 100 + '%', width: cropSel.w * 100 + '%', height: cropSel.h * 100 + '%' });
 }
@@ -1374,41 +1384,79 @@ function drawLoupe(p, e) {
   const y = e.clientY - 170 < 10 ? e.clientY + 40 : e.clientY - 170;
   Object.assign(lp.style, { left: x + 'px', top: y + 'px' });
 }
+// The frame is set in two steps: first corner, then the opposite one. While a corner is being placed,
+// dashed guide lines run through it across the whole photo; the first corner keeps its lines while the second is placed.
+let cropP1 = null;
+function cropHint() {
+  $('cropHint').textContent = cropSel && !cropP1
+    ? 'Готово. Чтобы поправить, потяните за угол рамки. «Убрать» — выделить заново.'
+    : cropP1 ? 'Шаг 2 из 2: поставьте правый нижний угол номера. Ведите палец и отпустите в нужной точке.'
+    : 'Шаг 1 из 2: поставьте левый верхний угол номера. Ведите палец и отпустите в нужной точке.';
+  $('cropClear').style.visibility = cropSel || cropP1 ? 'visible' : 'hidden';
+}
+function drawGuides(fixed, moving) {
+  const put = (id, p, prop, v) => { const el = $(id); el.hidden = !p; if (p) el.style[prop] = v * 100 + '%'; };
+  put('g1h', fixed, 'top', fixed && fixed.y); put('g1v', fixed, 'left', fixed && fixed.x);
+  put('g2h', moving, 'top', moving && moving.y); put('g2v', moving, 'left', moving && moving.x);
+  const d = $('cDot');
+  d.hidden = !fixed;
+  if (fixed) Object.assign(d.style, { left: fixed.x * 100 + '%', top: fixed.y * 100 + '%' });
+}
+const rectOf = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
 {
-  let anchor = null, frame = 0;
+  let drag = null, frame = 0;
   const pt = e => {
     const b = $('cropImg').getBoundingClientRect();
     return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)) };
   };
+  const show = (p, e) => {
+    if (drag.mode === 'p1') drawGuides(null, p);
+    else { cropSel = rectOf(drag.anchor, p); drawCropRect(); drawGuides(drag.anchor, p); drawCropPreview(); }
+    drawLoupe(p, e);
+  };
   const wrap = $('cropWrap');
   wrap.addEventListener('pointerdown', e => {
     const p = pt(e), b = $('cropImg').getBoundingClientRect();
-    anchor = p;
-    if (cropSel) { // grabbing near a corner moves that corner; the opposite one stays
+    if (cropSel && !cropP1) {
+      // a finished frame: only its corners can be dragged; the opposite corner stays
       const corners = [[cropSel.x, cropSel.y], [cropSel.x + cropSel.w, cropSel.y], [cropSel.x, cropSel.y + cropSel.h], [cropSel.x + cropSel.w, cropSel.y + cropSel.h]];
-      let best = null, bd = 32;
+      let best = null, bd = 36;
       corners.forEach(([x, y], k) => {
         const d = Math.hypot((x - p.x) * b.width, (y - p.y) * b.height);
         if (d < bd) { bd = d; best = k; }
       });
-      if (best != null) { const o = corners[3 - best]; anchor = { x: o[0], y: o[1] }; }
-    }
+      if (best == null) return;
+      const o = corners[3 - best];
+      drag = { mode: 'corner', anchor: { x: o[0], y: o[1] }, before: { ...cropSel }, p };
+    } else if (!cropP1) drag = { mode: 'p1', p };
+    else drag = { mode: 'p2', anchor: cropP1, p };
     wrap.setPointerCapture(e.pointerId);
-    drawLoupe(p, e);
+    show(p, e);
   });
   wrap.addEventListener('pointermove', e => {
-    if (!anchor) return;
-    const p = pt(e);
-    cropSel = { x: Math.min(anchor.x, p.x), y: Math.min(anchor.y, p.y), w: Math.abs(p.x - anchor.x), h: Math.abs(p.y - anchor.y) };
-    drawCropRect();
+    if (!drag) return;
+    const p = drag.p = pt(e);
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => { drawCropPreview(); drawLoupe(p, e); });
+    frame = requestAnimationFrame(() => { if (drag) show(p, e); });
   });
   const end = async () => {
-    if (!anchor) return;
-    anchor = null;
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    cancelAnimationFrame(frame); // a pending redraw must not bring the loupe back
     $('loupe').hidden = true;
-    if (!cropSel || cropSel.w < 0.01 || cropSel.h < 0.005) { cropSel = C.shots[cropShot].crop ? { ...C.shots[cropShot].crop.rect } : null; drawCropRect(); drawCropPreview(); return; }
+    if (d.mode === 'p1') { cropP1 = d.p; drawGuides(cropP1, null); cropHint(); return; }
+    const sel = rectOf(d.anchor, d.p);
+    if (sel.w < 0.01 || sel.h < 0.005) { // too small: keep waiting for the second corner, or undo the corner move
+      cropSel = d.mode === 'corner' ? d.before : null;
+      drawCropRect(); drawCropPreview();
+      drawGuides(d.mode === 'p2' ? cropP1 : null, null);
+      cropHint();
+      return;
+    }
+    cropSel = sel;
+    cropP1 = null;
+    drawGuides(null, null); drawCropRect(); drawCropPreview(); cropHint();
     const s = C.shots[cropShot], crop = await makeCrop(s, { ...cropSel }, false);
     renderCropStrip();
     recognizePlate([crop.canvas], 'crop');
@@ -1420,7 +1468,8 @@ $('cropClear').onclick = () => {
   C.shots[cropShot].crop = null;
   C.saved = false;
   cropSel = null;
-  drawCropRect(); drawCropPreview(); renderCropStrip();
+  cropP1 = null;
+  drawGuides(null, null); drawCropRect(); drawCropPreview(); renderCropStrip(); cropHint();
 };
 const closeCrop = () => { $('crop').hidden = true; $('loupe').hidden = true; renderInset(); };
 $('cropClose').onclick = closeCrop;
