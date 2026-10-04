@@ -89,6 +89,7 @@
   .strip img { height: 72px; border-radius: 8px; flex: none; }
 
   .edit { border: 0; background: none; color: var(--accent); font-size: 15px; padding: 2px 0 0; text-align: left; }
+  .edit.need { margin-top: 6px; padding: 10px 14px; border: 1px solid var(--accent); border-radius: 12px; font-weight: 600; }
   .seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--card); flex: none; }
   .seg button { padding: 8px 12px; border: 0; background: none; font-size: 15px; }
   .seg button + button { border-left: 1px solid var(--line); }
@@ -941,6 +942,7 @@ function makeShot(file, when, headingVal) {
   s.ready = (async () => {
     if (!s.coords && 'geolocation' in navigator) s.coords = (await freshFix().catch(() => fix) || {}).coords || null;
     if (s.coords) s.addr = await addressFor(s.coords.latitude, s.coords.longitude);
+    persistCase();
   })().catch(() => {});
   return s;
 }
@@ -954,6 +956,7 @@ $('cam').addEventListener('change', e => {
   const when = new Date(file.lastModified && now - file.lastModified < 600000 ? Math.min(now, file.lastModified) : now);
   C.shots.push(makeShot(file, when, shotHeading));
   C.saved = false;
+  persistCase();
   renderPhotos();
 });
 
@@ -1015,6 +1018,7 @@ $('shutter').onclick = async () => {
   c.width = c.height = 0;
   C.shots.push(makeShot(new File([blob], 'camera.jpg', { type: 'image/jpeg', lastModified: when.getTime() }), when, h));
   C.saved = false;
+  persistCase();
   renderCamUI();
 };
 
@@ -1297,6 +1301,7 @@ async function makeCrop(s, rect, auto) {
   s.crop = { id: `${Date.now()}-${Math.random()}`, rect, canvas, auto: !!auto };
   if (C.inset == null) C.inset = true;
   C.saved = false;
+  persistCase();
   return s.crop;
 }
 
@@ -1603,7 +1608,9 @@ $('plateSkip').onclick = () => { C.plate = ''; saveCar(); go('done'); };
 // ---------- summary ----------
 function renderDone() {
   const n = C.shots.length, s = C.shots[0];
-  const place = C.addr || (s && s.addr ? (S.full ? s.addr.full : s.addr.short) : 'не определён');
+  const noAddr = !C.addr && !(s && s.addr);
+  const place = C.addr || (s && s.addr ? (S.full ? s.addr.full : s.addr.short)
+    : navigator.onLine ? 'не определён' : 'не определён — нет интернета');
   const rows = [];
   if (!C.quick) {
     rows.push(['Нарушение', violationText()]);
@@ -1616,7 +1623,8 @@ function renderDone() {
   $('summary').innerHTML = rows.map(([k, v]) =>
     `<div class="row${k === 'Адрес' || k === 'Нарушение' ? ' col' : ''}"><span class="label">${k}` +
     (k === 'Адрес' && C.addr ? ' <small>(исправлен вручную)</small>' : '') + `</span><span class="val">${esc(v)}</span>` +
-    (k === 'Адрес' ? '<button class="edit" id="addrEditBtn">✎ Изменить</button>' : '') + '</div>').join('');
+    (k === 'Адрес' ? `<button class="edit${noAddr ? ' need' : ''}" id="addrEditBtn">${noAddr ? '✎ Ввести адрес вручную' : '✎ Изменить'}</button>` : '') +
+    '</div>').join('');
   $('addrEditBtn').onclick = openAddrEdit;
   $('saveBtn').textContent = n > 1 ? `Сохранить в Фото (${n})` : 'Сохранить в Фото';
   $('savedNote').textContent = C.saved ? 'Сохранено ✓' : n > 1 ? `Снимки получат номера «1 из ${n}» … «${n} из ${n}».` : '';
@@ -1651,6 +1659,7 @@ async function saveAll() {
     }
     C.saved = true;
   }
+  persistCase();
   renderDone();
   renderSubmit();
 }
@@ -1902,7 +1911,94 @@ $('checkUpd').onclick = () => checkUpdate(true);
 setTimeout(() => checkUpdate(false), 2000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
 
+// ---------- keeping the case across restarts ----------
+// iOS may unload the app at any time; the case being recorded is kept in IndexedDB.
+// Each photo is written once when taken; afterwards only the small description is rewritten.
+const idb = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('geofoto', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const run = (mode, fn) => open().then(db => new Promise((res, rej) => {
+    const tx = db.transaction('kv', mode), st = tx.objectStore('kv'), out = fn(st);
+    tx.oncomplete = () => res(out && out.result);
+    tx.onerror = () => rej(tx.error);
+  }));
+  return {
+    get: k => run('readonly', st => st.get(k)),
+    set: (k, v) => run('readwrite', st => { st.put(v, k); }),
+    del: k => run('readwrite', st => { st.delete(k); }),
+    keys: () => run('readonly', st => st.getAllKeys()),
+  };
+})();
+const plainCoords = c => c && { latitude: c.latitude, longitude: c.longitude, accuracy: c.accuracy, altitude: c.altitude };
+let persistTimer = 0;
+async function persistNow() {
+  clearTimeout(persistTimer);
+  try {
+    if (!C) {
+      for (const k of await idb.keys()) await idb.del(k);
+      return;
+    }
+    for (const s of C.shots) {
+      if (!s.id) s.id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      if (!s.stored) { await idb.set('shot:' + s.id, s.file); s.stored = true; }
+    }
+    await idb.set('case', {
+      quick: C.quick, violation: C.violation, other: C.other || '', plate: C.plate, car: C.car, addr: C.addr || '',
+      inset: C.inset, saved: C.saved, ocrTried: !!C.ocrTried,
+      shots: C.shots.map(s => ({ id: s.id, when: s.when, coords: plainCoords(s.coords), addr: s.addr, heading: s.heading,
+        net: s.net, crop: s.crop ? { rect: s.crop.rect, auto: s.crop.auto } : null })),
+    });
+    const keep = new Set(C.shots.map(s => 'shot:' + s.id));
+    for (const k of await idb.keys()) if (k.startsWith('shot:') && !keep.has(k)) await idb.del(k);
+  } catch {}
+}
+const persistCase = () => { clearTimeout(persistTimer); persistTimer = setTimeout(persistNow, 400); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
+async function restoreCase() {
+  try {
+    const m = await idb.get('case');
+    if (!m || !m.shots || !m.shots.length) return;
+    const shots = [];
+    for (const d of m.shots) {
+      const file = await idb.get('shot:' + d.id);
+      if (!file) continue;
+      const s = { ...d, file, thumb: URL.createObjectURL(file), rendered: null, stored: true, crop: null, ready: Promise.resolve() };
+      if (!s.addr && s.coords) s.ready = addressFor(s.coords.latitude, s.coords.longitude).then(a => { s.addr = a; persistCase(); }).catch(() => {});
+      shots.push([s, d.crop]);
+    }
+    if (!shots.length) return;
+    C = { ...newCase(m.quick, m.violation), other: m.other, plate: m.plate, car: m.car, addr: m.addr, inset: m.inset,
+      saved: m.saved, ocrTried: m.ocrTried, shots: shots.map(([s]) => s) };
+    for (const [s, crop] of shots) if (crop) await makeCrop(s, crop.rect, crop.auto);
+    C.saved = m.saved; // makeCrop marks the case as changed
+    if (screen === 'home') renderHome();
+  } catch {}
+}
+// When the connection comes back, look up addresses the photos are still missing.
+window.addEventListener('online', () => {
+  if (!C) return;
+  for (const s of C.shots) {
+    if (s.addr || !s.coords) continue;
+    s.ready = addressFor(s.coords.latitude, s.coords.longitude).then(a => {
+      s.addr = a;
+      persistCase();
+      if (screen === 'done') renderDone();
+    }).catch(() => {});
+  }
+});
+
+// Save after any tap or typing, and on every screen change.
+document.addEventListener('click', persistCase, true);
+document.addEventListener('input', persistCase, true);
+document.addEventListener('change', persistCase, true);
+
 go('home');
+restoreCase();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 </script>
 </body>
