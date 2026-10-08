@@ -121,6 +121,13 @@
   .crop-wrap { position: relative; touch-action: none; line-height: 0; overflow: hidden; } /* keeps the dimming inside the photo */
   #cropImg { display: block; max-width: 100%; }
   .warn { color: #ffb347; font-size: 14px; margin: 6px 2px 0; }
+  .done-warn { font-size: 14px; margin: 10px 2px 0; padding: 10px 12px; border-radius: 12px; border: 1px solid; }
+  .done-warn.err { color: var(--danger); border-color: rgba(255,107,107,.5); background: rgba(255,107,107,.08); }
+  .done-warn.soft { color: #ffb347; border-color: rgba(255,179,71,.5); background: rgba(255,179,71,.08); }
+  .done-warn .fixes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .done-warn .fixes button { border: 1px solid currentColor; background: none; color: inherit; border-radius: 10px; padding: 7px 12px; font-size: 14px; }
+  .row.bad .label, .row.bad .val { color: var(--danger); }
+  .row.soft .label, .row.soft .val { color: #ffb347; }
   .warned { border-color: #ffb347 !important; }
   .guide { position: absolute; pointer-events: none; }
   .guide.h { left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,.75); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
@@ -254,6 +261,7 @@
   <div class="scroll">
     <div class="card" id="summary"></div>
     <p class="done-ok" id="savedNote"></p>
+    <div class="done-warn" id="doneWarn" hidden></div>
   </div>
   <button class="btn" id="saveBtn">Сохранить в Фото</button>
   <div class="btns" style="margin-top:10px" id="complaintRow">
@@ -1292,8 +1300,9 @@ $('plate').addEventListener('input', () => {
 });
 $('plate').addEventListener('blur', () => { $('plate').value = formatPlate($('plate').value); C.plate = $('plate').value; });
 // Keep what is typed, so opening a photo or the plate selection and coming back does not lose it.
-$('plate').addEventListener('input', () => { C.plate = $('plate').value; if (ocr.filled && $('plate').value !== ocr.filled) ocr.filled = null; });
-$('car').addEventListener('input', () => { C.car = $('car').value; });
+// a new plate or make changes the caption, so photos saved before need saving again
+$('plate').addEventListener('input', () => { C.plate = $('plate').value; C.saved = false; if (ocr.filled && $('plate').value !== ocr.filled) ocr.filled = null; });
+$('car').addEventListener('input', () => { C.car = $('car').value; C.saved = false; });
 
 // ---------- plate on each photo: selection, enlarged inset ----------
 // Every photo keeps its own plate frame (s.crop), set by hand or found by recognition.
@@ -1714,7 +1723,7 @@ function renderDone() {
   rows.push(['Адрес', place]);
   rows.push(['Снимков', String(n)]);
   $('summary').innerHTML = rows.map(([k, v]) =>
-    `<div class="row${k === 'Адрес' || k === 'Нарушение' ? ' col' : ''}"><span class="label">${k}` +
+    `<div class="row${k === 'Адрес' || k === 'Нарушение' ? ' col' : ''}" data-k="${k}"><span class="label">${k}` +
     (k === 'Адрес' && C.addr ? ' <small>(исправлен вручную)</small>' : '') + `</span><span class="val">${esc(v)}</span>` +
     (k === 'Адрес' ? `<button class="edit${noAddr ? ' need' : ''}" id="addrEditBtn">${noAddr ? '✎ Ввести адрес вручную' : '✎ Изменить'}</button>` : '') +
     '</div>').join('');
@@ -1723,6 +1732,7 @@ function renderDone() {
   $('savedNote').textContent = C.saved ? 'Сохранено ✓' : n > 1 ? `Снимки получат номера «1 из ${n}» … «${n} из ${n}».` : '';
   $('complaintRow').hidden = C.quick;
   $('nextCarBtn').textContent = C.quick ? 'Новые фото' : 'Следующее ТС';
+  hideDoneWarn();
 }
 
 async function saveAll() {
@@ -2003,6 +2013,53 @@ $('updateBtn').onclick = applyUpdate;
 $('checkUpd').onclick = () => checkUpdate(true);
 setTimeout(() => checkUpdate(false), 2000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(false); });
+
+// ---------- checks before saving or a complaint ----------
+// Plate and address are required for a violation; a missing make and model only warns:
+// the first tap explains, a second tap on any of the three buttons goes on.
+let doneWarned = false;
+function hideDoneWarn() {
+  doneWarned = false;
+  $('doneWarn').hidden = true;
+  document.querySelectorAll('#summary .row').forEach(r => r.classList.remove('bad', 'soft'));
+}
+function showDoneWarn(kind, html, rows, fixes) {
+  const box = $('doneWarn');
+  box.className = 'done-warn ' + kind;
+  box.innerHTML = html + (fixes.length ? '<div class="fixes">' + fixes.map(([t]) => `<button>${t}</button>`).join('') + '</div>' : '');
+  box.querySelectorAll('.fixes button').forEach((b, i) => { b.onclick = fixes[i][1]; });
+  box.hidden = false;
+  document.querySelectorAll('#summary .row').forEach(r => {
+    r.classList.toggle('bad', kind === 'err' && rows.includes(r.dataset.k));
+    r.classList.toggle('soft', kind === 'soft' && rows.includes(r.dataset.k));
+  });
+  box.scrollIntoView({ block: 'nearest' });
+}
+function doneCheck(action) {
+  if (C.quick) return true;
+  const s = C.shots[0], noPlate = !C.plate, noAddr = !C.addr && !(s && s.addr);
+  if (noPlate || noAddr) {
+    const what = [noPlate && 'госномер', noAddr && 'адрес'].filter(Boolean);
+    showDoneWarn('err', `Чтобы ${action}, ${what.length > 1 ? 'нужны' : 'нужен'} ${what.join(' и ')}.`,
+      [noPlate && 'Госномер', noAddr && 'Адрес'].filter(Boolean),
+      [noPlate && ['Указать госномер', () => go('plate')], noAddr && ['Ввести адрес', openAddrEdit]].filter(Boolean));
+    return false;
+  }
+  if (!C.car && !doneWarned) {
+    showDoneWarn('soft', 'Марка и модель не указаны. Нажмите ещё раз, чтобы продолжить без них.', ['Марка и модель'],
+      [['Указать марку', () => { go('plate'); setTimeout(() => $('car').focus(), 50); }]]);
+    doneWarned = true;
+    return false;
+  }
+  hideDoneWarn();
+  return true;
+}
+{
+  const guard = (id, action) => { const run = $(id).onclick; $(id).onclick = () => { if (doneCheck(action)) run(); }; };
+  guard('saveBtn', 'сохранить снимки');
+  guard('complaintBtn', 'составить жалобу');
+  guard('submitBtn', 'подать жалобу');
+}
 
 // ---------- keeping the case across restarts ----------
 // iOS may unload the app at any time; the case being recorded is kept in IndexedDB.
