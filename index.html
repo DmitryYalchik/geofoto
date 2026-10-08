@@ -120,6 +120,8 @@
   .crop-area { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
   .crop-wrap { position: relative; touch-action: none; line-height: 0; overflow: hidden; } /* keeps the dimming inside the photo */
   #cropImg { display: block; max-width: 100%; }
+  .warn { color: #ffb347; font-size: 14px; margin: 6px 2px 0; }
+  .warned { border-color: #ffb347 !important; }
   .guide { position: absolute; pointer-events: none; }
   .guide.h { left: 0; right: 0; border-top: 1px dashed rgba(255,255,255,.75); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
   .guide.v { top: 0; bottom: 0; border-left: 1px dashed rgba(255,255,255,.75); box-shadow: 1px 0 0 rgba(0,0,0,.35); }
@@ -226,8 +228,10 @@
   <div class="scroll">
     <input class="plate-input" id="plate" type="text" placeholder="А123ВС 777" autocomplete="off"
       autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next" maxlength="14">
+    <p class="warn" id="plateWarn" hidden></p>
     <input class="field" id="car" type="text" placeholder="Марка и модель, например Kia Rio" autocomplete="off"
       autocorrect="off" spellcheck="false" enterkeyhint="done" maxlength="60" style="margin-top:10px">
+    <p class="warn" id="carWarn" hidden></p>
     <div class="sugg" id="carSugg"></div>
     <button class="btn ghost" id="cropBtn" style="margin-top:12px">🔍 Выделить номер на снимке</button>
     <p class="sub ocr" id="ocrNote"></p>
@@ -1253,6 +1257,8 @@ function renderSugg() {
     b.addEventListener('pointerdown', e => e.preventDefault());
     b.onclick = () => {
       $('car').value = s.make ? s.text + ' ' : s.text;
+      C.car = $('car').value;
+      resetPlateWarnings();
       if (s.make) { $('car').focus(); renderSugg(); } else { $('car').blur(); box.innerHTML = ''; }
     };
     box.appendChild(b);
@@ -1266,6 +1272,7 @@ $('car').onkeydown = e => { if (e.key === 'Enter') $('plateNext').click(); };
 function renderPlate() {
   $('plate').value = C.plate;
   $('car').value = C.car || '';
+  resetPlateWarnings();
   $('carSugg').innerHTML = '';
   $('plateStrip').innerHTML = '';
   C.shots.forEach((s, i) => {
@@ -1651,7 +1658,34 @@ const saveCar = () => {
   rememberCar(C.car);
   document.activeElement.blur();
 };
-$('plateNext').onclick = () => { C.plate = formatPlate($('plate').value); saveCar(); go('done'); };
+// Soft validation: the first tap points at what is missing, the second one goes on anyway.
+// Editing a field asks again on the next tap.
+let plateWarned = false;
+function plateWarnings() {
+  const plate = formatPlate($('plate').value), car = $('car').value.trim();
+  return {
+    plate: !plate ? 'Госномер не указан.'
+      : !/^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2} \d{2,3}$/.test(plate) ? 'Номер не похож на российский формат «А123ВС 77». Проверьте буквы и цифры.' : '',
+    car: car ? '' : 'Марка и модель не указаны.',
+  };
+}
+function showPlateWarnings(w) {
+  for (const k of ['plate', 'car']) {
+    $(k + 'Warn').hidden = !w[k];
+    $(k + 'Warn').textContent = w[k] || '';
+    $(k).classList.toggle('warned', !!w[k]);
+  }
+  $('plateNext').textContent = w && (w.plate || w.car) ? 'Всё равно продолжить' : 'Готово';
+}
+function resetPlateWarnings() { plateWarned = false; showPlateWarnings({}); }
+$('plate').addEventListener('input', resetPlateWarnings);
+$('car').addEventListener('input', resetPlateWarnings);
+$('plateNext').onclick = () => {
+  const w = plateWarnings();
+  if ((w.plate || w.car) && !plateWarned) { plateWarned = true; showPlateWarnings(w); return; }
+  resetPlateWarnings();
+  C.plate = formatPlate($('plate').value); saveCar(); go('done');
+};
 $('plateSkip').onclick = () => { C.plate = ''; saveCar(); go('done'); };
 
 // ---------- summary ----------
