@@ -152,6 +152,19 @@
   .sub.ocr .ocr-pick { margin: 8px 8px 0 0; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
     color: var(--text); font: 600 16px/1 Menlo, "Courier New", monospace; }
   .sub.ocr .ocr-pick.on { border-color: var(--accent); color: var(--accent); }
+  .hlist { display: flex; flex-direction: column; gap: 8px; }
+  .hrow { display: flex; align-items: stretch; gap: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .hrow .hmain { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; border: 0; background: none; padding: 8px; text-align: left; }
+  .hrow img, .hrow .himg { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; flex: none; background: #000; }
+  .hrow .htext { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .hrow .htext b { font-weight: 600; }
+  .hrow .htext span, .hrow .htext small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .htext span { font-size: 14px; }
+  .hrow .htext small { font-size: 12px; color: var(--muted); }
+  .hrow .htext i { font-style: normal; }
+  .hrow .htext .ok { color: var(--ok); }
+  .hrow .htext .no, .hrow .htext .miss { color: #ffb347; }
+  .hrow .hdel { border: 0; background: none; padding: 0 14px; font-size: 18px; flex: none; }
   .vlist { display: flex; flex-direction: column; gap: 8px; }
   .vrow { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 6px 6px 6px 12px; }
   .vrow .vmain { flex: 1; min-width: 0; border: 0; background: none; text-align: left; padding: 8px 0; display: flex; gap: 10px; align-items: center; }
@@ -198,7 +211,7 @@
     <button class="btn ghost" id="compassBtn" hidden>🧭 Включить компас</button>
   </div>
   <button class="btn ghost" id="updateBtn" hidden>⟳ Вышла новая версия — обновить</button>
-  <button class="btn ghost" id="resumeBtn" hidden></button>
+  <button class="btn ghost" id="historyBtn" hidden>🗂 История</button>
   <button class="btn" id="newCaseBtn">🚗 Новое нарушение</button>
   <button class="btn gray" id="quickBtn">📷 Просто фото с координатами</button>
   <p class="build" id="build"></p>
@@ -271,6 +284,16 @@
   <div class="btns" style="margin-top:10px">
     <button class="btn gray" id="nextCarBtn">Следующее ТС</button>
     <button class="btn gray" id="homeBtn">На главную</button>
+  </div>
+</section>
+
+<!-- ============ History ============ -->
+<section class="screen" id="scr-history" hidden>
+  <div class="bar"><button class="back" data-back>‹ Назад</button><span class="title">История</span><span class="step"></span></div>
+  <p class="sub">Нажмите на нарушение, чтобы дописать данные или пересохранить снимки.</p>
+  <div class="scroll">
+    <div class="hlist" id="historyList"></div>
+    <p class="empty" id="historyEmpty" hidden>Пока пусто</p>
   </div>
 </section>
 
@@ -846,7 +869,8 @@ function formatPlate(v) {
 // ---------- navigation ----------
 // C is the case being recorded: one vehicle, its violation, plate and photos.
 let C = null;
-const newCase = (quick, violation) => ({ quick, violation: violation || null, plate: '', car: '', shots: [], saved: false, crop: null, inset: null });
+const newCase = (quick, violation) => ({ id: newId(), created: Date.now(), quick, violation: violation || null, plate: '', car: '',
+  shots: [], saved: false, crop: null, inset: null });
 const violationText = () => C && !C.quick ? (C.violation ? C.violation.label : C.other) : '';
 
 const BACK = {
@@ -855,32 +879,32 @@ const BACK = {
   plate: () => go('photos'),
   done: () => go(C.quick ? 'photos' : 'plate'),
   settings: () => go('home'),
+  history: () => go('home'),
 };
 let screen = 'home';
 function go(name) {
-  for (const s of ['home', 'type', 'photos', 'plate', 'done', 'settings']) $('scr-' + s).hidden = s !== name;
+  for (const s of ['home', 'type', 'photos', 'plate', 'done', 'settings', 'history']) $('scr-' + s).hidden = s !== name;
   screen = name;
-  ({ home: renderHome, type: renderType, photos: renderPhotos, plate: renderPlate, done: renderDone }[name] || (() => {}))();
+  ({ home: renderHome, type: renderType, photos: renderPhotos, plate: renderPlate, done: renderDone, history: renderHistory }[name] || (() => {}))();
   resetScroll();
 }
 document.querySelectorAll('[data-back]').forEach(b => { b.onclick = () => BACK[screen](); });
 $('toSettings').onclick = () => go('settings');
 
-const confirmDiscard = () => !C || !C.shots.length || C.saved ||
-  confirm(`Есть несохранённые снимки (${C.shots.length}). Удалить их и продолжить?`);
-
 // ---------- home ----------
-function renderHome() {
-  const open = C && C.shots.length && !C.saved;
-  $('resumeBtn').hidden = !open;
-  if (open) {
-    const n = C.shots.length;
-    $('resumeBtn').textContent = `↩ Продолжить: ${C.quick ? 'фото' : violationText() || 'нарушение'} · ${n} ${plural(n, 'снимок', 'снимка', 'снимков')}`;
-  }
+// Cases are never thrown away when another one is started: they stay in the history.
+async function renderHome() {
+  try {
+    const idx = await getIndex();
+    let unsaved = 0;
+    for (const id of idx) { const m = await idb.get(caseKey(id)); if (m && !m.saved) unsaved++; }
+    $('historyBtn').hidden = !idx.length;
+    $('historyBtn').textContent = `🗂 История · ${idx.length}` + (unsaved ? ` (не сохранено: ${unsaved})` : '');
+  } catch { $('historyBtn').hidden = true; }
 }
-$('resumeBtn').onclick = () => go(C.quick ? 'photos' : C.plate ? 'done' : 'photos');
-$('newCaseBtn').onclick = () => { if (confirmDiscard()) { C = newCase(false); go('type'); } };
-$('quickBtn').onclick = () => { if (confirmDiscard()) { C = newCase(true); go('photos'); } };
+$('historyBtn').onclick = () => { leaveCase(); go('history'); };
+$('newCaseBtn').onclick = () => { leaveCase(); C = newCase(false); go('type'); };
+$('quickBtn').onclick = () => { leaveCase(); C = newCase(true); go('photos'); };
 
 // ---------- step 1: violation ----------
 function renderTypeList() {
@@ -1792,12 +1816,13 @@ $('addrReset').onclick = () => { setAddr(''); closeAddrEdit(); };
 
 // Same violation and place, new vehicle: keep the violation, clear photos and plate.
 $('nextCarBtn').onclick = () => {
-  if (!confirmDiscard()) return;
-  C = Object.assign(newCase(C.quick, C.violation), { other: C.other, addr: C.addr });
+  const prev = C;
+  leaveCase();
+  C = Object.assign(newCase(prev.quick, prev.violation), { other: prev.other, addr: prev.addr });
   go('photos');
 };
 $('homeBtn').onclick = () => {
-  if (!confirmDiscard()) return;
+  leaveCase();
   C = null;
   go('home');
 };
@@ -2085,49 +2110,126 @@ const idb = (() => {
   };
 })();
 const plainCoords = c => c && { latitude: c.latitude, longitude: c.longitude, accuracy: c.accuracy, altitude: c.altitude };
-let persistTimer = 0;
-async function persistNow() {
-  clearTimeout(persistTimer);
+// Every case is kept: its description under 'case:<id>', each photo once under 'shot:<id>',
+// and the list of cases (newest first) under 'case-index'.
+const caseKey = id => 'case:' + id;
+const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const getIndex = async () => (await idb.get('case-index')) || [];
+async function persistNow(c = C) {
   try {
-    if (!C) {
-      for (const k of await idb.keys()) await idb.del(k);
-      return;
-    }
-    for (const s of C.shots) {
-      if (!s.id) s.id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    if (!c) return;
+    if (!c.id) c.id = newId();
+    if (!c.shots.length) { await deleteCase(c.id); return; } // an empty case is not kept
+    for (const s of c.shots) {
+      if (!s.id) s.id = newId();
       if (!s.stored) { await idb.set('shot:' + s.id, s.file); s.stored = true; }
     }
-    await idb.set('case', {
-      quick: C.quick, violation: C.violation, other: C.other || '', plate: C.plate, car: C.car, addr: C.addr || '',
-      inset: C.inset, saved: C.saved, ocrTried: !!C.ocrTried,
-      shots: C.shots.map(s => ({ id: s.id, when: s.when, coords: plainCoords(s.coords), addr: s.addr, heading: s.heading,
+    const prev = await idb.get(caseKey(c.id));
+    await idb.set(caseKey(c.id), {
+      id: c.id, created: c.created || Date.now(), updated: Date.now(),
+      quick: c.quick, violation: c.violation, other: c.other || '', plate: c.plate, car: c.car, addr: c.addr || '',
+      inset: c.inset, saved: c.saved, ocrTried: !!c.ocrTried,
+      shots: c.shots.map(s => ({ id: s.id, when: s.when, coords: plainCoords(s.coords), addr: s.addr, heading: s.heading,
         net: s.net, crop: s.crop ? { rect: s.crop.rect, auto: s.crop.auto } : null })),
     });
-    const keep = new Set(C.shots.map(s => 'shot:' + s.id));
-    for (const k of await idb.keys()) if (k.startsWith('shot:') && !keep.has(k)) await idb.del(k);
+    const idx = await getIndex();
+    if (!idx.includes(c.id)) await idb.set('case-index', [c.id, ...idx]);
+    // photos deleted from this case
+    if (prev) for (const d of prev.shots) if (!c.shots.some(s => s.id === d.id)) await idb.del('shot:' + d.id);
   } catch {}
 }
-const persistCase = () => { clearTimeout(persistTimer); persistTimer = setTimeout(persistNow, 400); };
-document.addEventListener('visibilitychange', () => { if (document.hidden) persistNow(); });
-async function restoreCase() {
+async function deleteCase(id) {
+  const m = await idb.get(caseKey(id));
+  if (m) for (const d of m.shots) await idb.del('shot:' + d.id);
+  await idb.del(caseKey(id));
+  const idx = await getIndex();
+  if (idx.includes(id)) await idb.set('case-index', idx.filter(x => x !== id));
+}
+// Changes are written a moment later; every case touched meanwhile is written, not only the open one.
+const dirty = new Set();
+let persistTimer = 0;
+const flushCases = () => { clearTimeout(persistTimer); const list = [...dirty]; dirty.clear(); return Promise.all(list.map(c => persistNow(c))); };
+const persistCase = () => { if (C) dirty.add(C); clearTimeout(persistTimer); persistTimer = setTimeout(flushCases, 400); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) { if (C) dirty.add(C); flushCases(); } });
+// Leaving the open case for another one: write it first.
+const leaveCase = () => { if (C) { dirty.add(C); flushCases(); } };
+
+async function loadCase(id) {
+  const m = await idb.get(caseKey(id));
+  if (!m) return null;
+  const shots = [];
+  for (const d of m.shots) {
+    const file = await idb.get('shot:' + d.id);
+    if (!file) continue;
+    const s = { ...d, file, thumb: URL.createObjectURL(file), rendered: null, stored: true, crop: null, ready: Promise.resolve() };
+    if (!s.addr && s.coords) s.ready = addressFor(s.coords.latitude, s.coords.longitude).then(a => { s.addr = a; persistCase(); }).catch(() => {});
+    shots.push([s, d.crop]);
+  }
+  const c = { ...newCase(m.quick, m.violation), id: m.id, created: m.created, other: m.other, plate: m.plate, car: m.car,
+    addr: m.addr, inset: m.inset, ocrTried: m.ocrTried, shots: shots.map(([s]) => s) };
+  C = c;
+  for (const [s, crop] of shots) if (crop) await makeCrop(s, crop.rect, crop.auto);
+  c.saved = m.saved; // makeCrop marks the case as changed
+  dirty.delete(c);
+  return c;
+}
+// The single case kept by the previous version becomes the first entry of the history.
+async function migrateOldCase() {
   try {
     const m = await idb.get('case');
-    if (!m || !m.shots || !m.shots.length) return;
-    const shots = [];
-    for (const d of m.shots) {
-      const file = await idb.get('shot:' + d.id);
-      if (!file) continue;
-      const s = { ...d, file, thumb: URL.createObjectURL(file), rendered: null, stored: true, crop: null, ready: Promise.resolve() };
-      if (!s.addr && s.coords) s.ready = addressFor(s.coords.latitude, s.coords.longitude).then(a => { s.addr = a; persistCase(); }).catch(() => {});
-      shots.push([s, d.crop]);
+    if (!m) return;
+    if (m.shots && m.shots.length) {
+      const id = newId();
+      await idb.set(caseKey(id), { ...m, id, created: Date.now(), updated: Date.now() });
+      await idb.set('case-index', [id, ...await getIndex()]);
     }
-    if (!shots.length) return;
-    C = { ...newCase(m.quick, m.violation), other: m.other, plate: m.plate, car: m.car, addr: m.addr, inset: m.inset,
-      saved: m.saved, ocrTried: m.ocrTried, shots: shots.map(([s]) => s) };
-    for (const [s, crop] of shots) if (crop) await makeCrop(s, crop.rect, crop.auto);
-    C.saved = m.saved; // makeCrop marks the case as changed
-    if (screen === 'home') renderHome();
+    await idb.del('case');
   } catch {}
+  if (screen === 'home') renderHome();
+}
+
+// ---------- history ----------
+let historyUrls = [];
+const caseMissing = m => m.quick ? [] : [!m.plate && 'госномер', !m.addr && !(m.shots[0] && m.shots[0].addr) && 'адрес', !m.car && 'марка']
+  .filter(Boolean);
+async function renderHistory() {
+  historyUrls.forEach(u => URL.revokeObjectURL(u));
+  historyUrls = [];
+  const list = $('historyList'), idx = await getIndex();
+  list.innerHTML = '';
+  $('historyEmpty').hidden = idx.length > 0;
+  for (const id of idx) {
+    const m = await idb.get(caseKey(id));
+    if (!m) continue;
+    const first = m.shots[0], blob = first && await idb.get('shot:' + first.id);
+    const url = blob ? URL.createObjectURL(blob) : '';
+    if (url) historyUrls.push(url);
+    const when = first ? new Date(first.when) : new Date(m.created);
+    const title = m.quick ? 'Фото с координатами' : (m.violation ? m.violation.label : m.other || 'Нарушение');
+    const miss = caseMissing(m), n = m.shots.length;
+    const row = document.createElement('div');
+    row.className = 'hrow';
+    row.innerHTML = `<button class="hmain">${url ? `<img src="${url}" alt="">` : '<span class="himg"></span>'}<span class="htext">` +
+      `<b>${esc(m.plate || (m.quick ? '' : 'без номера'))}${m.car ? ' · ' + esc(m.car) : ''}</b>` +
+      `<span>${esc(title)}</span>` +
+      `<small>${fmtDate(when)} ${fmtTime(when).slice(0, 5)} · ${n} ${plural(n, 'снимок', 'снимка', 'снимков')}</small>` +
+      `<small>${m.saved ? '<i class="ok">сохранено ✓</i>' : '<i class="no">не сохранено</i>'}` +
+      (miss.length ? ` · <i class="miss">не хватает: ${miss.join(', ')}</i>` : '') + '</small>' +
+      `</span></button><button class="hdel" aria-label="Удалить">🗑</button>`;
+    const [open, del] = row.querySelectorAll('button');
+    open.onclick = async () => {
+      leaveCase();
+      $('busy').hidden = false;
+      try { if (await loadCase(id)) go('done'); } finally { $('busy').hidden = true; }
+    };
+    del.onclick = async () => {
+      if (!confirm(`Удалить из истории «${m.plate || title}» вместе со снимками (${n})? Снимки, уже сохранённые в Фото, останутся.`)) return;
+      if (C && C.id === id) C = null;
+      await deleteCase(id);
+      renderHistory();
+    };
+    list.appendChild(row);
+  }
 }
 // When the connection comes back, look up addresses the photos are still missing.
 window.addEventListener('online', () => {
@@ -2148,7 +2250,7 @@ document.addEventListener('input', persistCase, true);
 document.addEventListener('change', persistCase, true);
 
 go('home');
-restoreCase();
+migrateOldCase();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 </script>
 </body>
