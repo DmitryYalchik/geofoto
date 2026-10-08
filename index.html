@@ -1858,7 +1858,10 @@ function complaintValues(c) {
     'снимков': `${n} ${plural(n, 'снимок', 'снимка', 'снимков')}`,
   };
 }
-const buildComplaint = () => fillTemplate(TEMPLATE, complaintValues(C));
+// No-break spaces keep "г. Екатеринбург" together in the photo caption, but web forms
+// (Gosuslugi among them) show them as "&nbsp;", so the complaint text uses ordinary spaces.
+const plainSpaces = t => t.replace(/ /g, ' ');
+const buildComplaint = () => plainSpaces(fillTemplate(TEMPLATE, complaintValues(C)));
 
 // Your edits to the text are kept while the case data they were made on stays the same.
 const complaintText = () => {
@@ -1866,6 +1869,7 @@ const complaintText = () => {
   return C.edited && C.edited.base === base ? C.edited.text : base;
 };
 function copyText(text) {
+  text = plainSpaces(text);
   const fallback = () => {
     const t = document.createElement('textarea');
     t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0';
