@@ -234,6 +234,7 @@
     <p class="warn" id="carWarn" hidden></p>
     <div class="sugg" id="carSugg"></div>
     <button class="btn ghost" id="cropBtn" style="margin-top:12px">🔍 Выделить номер на снимке</button>
+    <p class="warn" id="cropWarn" hidden></p>
     <p class="sub ocr" id="ocrNote"></p>
     <div id="insetBox" hidden>
       <div class="inset-strip" id="insetStrip"></div>
@@ -1478,7 +1479,7 @@ $('cropClear').onclick = () => {
   cropP1 = null;
   drawGuides(null, null); drawCropRect(); drawCropPreview(); renderCropStrip(); cropHint();
 };
-const closeCrop = () => { $('crop').hidden = true; $('loupe').hidden = true; renderInset(); };
+const closeCrop = () => { $('crop').hidden = true; $('loupe').hidden = true; renderInset(); resetPlateWarnings(); };
 $('cropClose').onclick = closeCrop;
 $('cropDone').onclick = closeCrop;
 $('cropBtn').onclick = () => openCrop();
@@ -1499,7 +1500,7 @@ function renderInset() {
     (auto ? ` (${auto === k ? 'автоматически' : `${auto} автоматически`} — проверьте)` : '') + '. Нажмите, чтобы поправить.';
   $('optInset').checked = C.inset !== false;
 }
-$('optInset').onchange = e => { C.inset = e.target.checked; C.saved = false; };
+$('optInset').onchange = e => { C.inset = e.target.checked; C.saved = false; resetPlateWarnings(); };
 
 // ---------- plate recognition (Tesseract OCR, runs on the phone; loaded on first use) ----------
 const ocr = { worker: null, filled: null, run: 0 };
@@ -1667,22 +1668,31 @@ function plateWarnings() {
     plate: !plate ? 'Госномер не указан.'
       : !/^[АВЕКМНОРСТУХ]\d{3}[АВЕКМНОРСТУХ]{2} \d{2,3}$/.test(plate) ? 'Номер не похож на российский формат «А123ВС 77». Проверьте буквы и цифры.' : '',
     car: car ? '' : 'Марка и модель не указаны.',
+    crop: C.inset === false ? '' : cropWarning(),
   };
 }
+// The enlarged plate is per photo, so a photo without a frame gets no inset.
+function cropWarning() {
+  const n = C.shots.length, k = C.shots.filter(s => s.crop).length;
+  if (!n || k === n) return '';
+  return !k ? 'Номер не выделен на снимках — крупного номера в подписи не будет.'
+    : `Номер выделен на ${k} из ${n} ${plural(n, 'снимка', 'снимков', 'снимков')} — на остальных крупного номера не будет.`;
+}
+const WARN_FIELDS = { plate: 'plate', car: 'car', crop: 'cropBtn' };
 function showPlateWarnings(w) {
-  for (const k of ['plate', 'car']) {
+  for (const [k, field] of Object.entries(WARN_FIELDS)) {
     $(k + 'Warn').hidden = !w[k];
     $(k + 'Warn').textContent = w[k] || '';
-    $(k).classList.toggle('warned', !!w[k]);
+    $(field).classList.toggle('warned', !!w[k]);
   }
-  $('plateNext').textContent = w && (w.plate || w.car) ? 'Всё равно продолжить' : 'Готово';
+  $('plateNext').textContent = Object.keys(WARN_FIELDS).some(k => w[k]) ? 'Всё равно продолжить' : 'Готово';
 }
 function resetPlateWarnings() { plateWarned = false; showPlateWarnings({}); }
 $('plate').addEventListener('input', resetPlateWarnings);
 $('car').addEventListener('input', resetPlateWarnings);
 $('plateNext').onclick = () => {
   const w = plateWarnings();
-  if ((w.plate || w.car) && !plateWarned) { plateWarned = true; showPlateWarnings(w); return; }
+  if ((w.plate || w.car || w.crop) && !plateWarned) { plateWarned = true; showPlateWarnings(w); return; }
   resetPlateWarnings();
   C.plate = formatPlate($('plate').value); saveCar(); go('done');
 };
